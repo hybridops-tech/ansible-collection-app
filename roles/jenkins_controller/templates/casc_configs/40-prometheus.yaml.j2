@@ -1,0 +1,7 @@
+# purpose: Jenkins Prometheus plugin configuration
+# adr: ADR-0603-run-jenkins-controller-on-control-node-agents-on-rke2
+# maintainer: HybridOps.Studio
+
+unclassified:
+  prometheusConfiguration:
+    collectDiskUsage: {{ (jenkins_prometheus_collect_disk_usage | bool) | lower }}

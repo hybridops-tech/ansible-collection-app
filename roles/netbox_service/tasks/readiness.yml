@@ -1,0 +1,22 @@
+# purpose: Wait for NetBox API readiness (migrations complete)
+# adr: ADR-0002
+# maintainer: HybridOps.Studio
+
+- name: Wait for NetBox API readiness
+  ansible.builtin.uri:
+    url: "{{ netbox_readiness_url }}"
+    method: GET
+    status_code: [ 200, 302, 401, 403 ]
+    return_content: false
+  register: _netbox_ready
+  retries: "{{ netbox_readiness_retries }}"
+  delay: "{{ netbox_readiness_delay }}"
+  until: _netbox_ready.status is defined
+  changed_when: false
+
+- name: Wait for NetBox readiness
+  ansible.builtin.include_tasks: readiness.yml
+  when:
+  - netbox_readiness_enabled | bool
+  - netbox_require_db | bool
+  - not netbox_smoke_only | bool

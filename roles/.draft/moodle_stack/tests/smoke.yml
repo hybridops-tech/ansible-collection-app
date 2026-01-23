@@ -1,0 +1,13 @@
+# purpose: Smoke test for role moodle_stack
+# maintainer: HybridOps.Studio
+
+- name: Smoke test for role moodle_stack
+  hosts: moodle_stack_test
+  gather_facts: false
+  become: false
+
+  collections:
+    - hybridops.app
+
+  roles:
+    - role: hybridops.app.moodle_stack

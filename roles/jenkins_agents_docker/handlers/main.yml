@@ -1,0 +1,14 @@
+---
+# purpose: Handlers for jenkins_agents_docker
+# adr: ADR-0603-jenkins-controller-docker-agents-rke2
+# maintainer: HybridOps.Studio
+
+- name: Reload Jenkins Configuration as Code
+  ansible.builtin.uri:
+    url: "http://localhost:{{ jenkins_external_http_port | default(8080) }}/reload-configuration-as-code/"
+    method: POST
+    user: "{{ jenkins_admin_username | default('admin') }}"
+    password: "{{ jenkins_admin_password }}"
+    force_basic_auth: true
+    status_code: [200, 302, 403]
+  no_log: true

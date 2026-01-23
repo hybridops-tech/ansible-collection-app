@@ -1,0 +1,22 @@
+# purpose: Ansible-lint configuration for this HybridOps Ansible collection
+# adr: ADR-0606-ansible-collections-release-process
+# maintainer: HybridOps.Studio
+
+profile: production
+
+exclude_paths:
+- .git
+- .tox
+- .venv
+- dist
+- build
+- tests/output
+- output
+
+skip_list:
+- yaml # YAML style handled by yamllint in pre-commit
+
+warn_list:
+- no-changed-when
+- unnamed-task
+- fqcn-builtins

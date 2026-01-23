@@ -1,0 +1,43 @@
+# purpose: Deploy Jenkins controller using Docker Compose and wait for HTTP readiness
+# adr: ADR-0603-run-jenkins-controller-on-control-node-agents-on-rke2
+# maintainer: HybridOps.Studio
+
+- name: Render Docker Compose file for Jenkins controller
+  ansible.builtin.template:
+    src: "docker-compose.yml.j2"
+    dest: "{{ jenkins_home_path }}/docker-compose.yml"
+    mode: "0644"
+
+- name: Ensure Jenkins Docker network exists
+  community.docker.docker_network:
+    name: "{{ jenkins_network_name }}"
+    state: present
+
+- name: Start Jenkins controller stack
+  community.docker.docker_compose_v2:
+    project_src: "{{ jenkins_home_path }}"
+    state: present
+  register: jenkins_compose_result
+
+- name: Wait for Jenkins HTTP endpoint
+  ansible.builtin.uri:
+    url: "http://localhost:{{ jenkins_external_http_port }}/login"
+    method: GET
+    follow_redirects: all
+    status_code: [ 200, 302, 403 ]
+    return_content: false
+  register: jenkins_health_check
+  retries: 30
+  delay: 10
+  until: (jenkins_health_check.status | int) in [200, 302, 403]
+  when: jenkins_enable_healthcheck | bool
+  changed_when: false
+
+- name: Cleanup staged JCasC secrets
+  ansible.builtin.include_tasks: casc_secrets.yml
+  vars:
+    jenkins_casc_secrets_stage: false
+    jenkins_casc_secrets_cleanup: true
+  when:
+  - jenkins_casc_secrets_enabled | bool
+  - jenkins_casc_secrets_delete_staged | bool

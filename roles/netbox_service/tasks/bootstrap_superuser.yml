@@ -1,0 +1,36 @@
+# purpose: Create initial NetBox superuser (idempotent)
+# adr: ADR-0002, ADR-0502
+# maintainer: HybridOps.Studio
+
+- name: Wait for NetBox HTTP to respond
+  ansible.builtin.uri:
+    url: "http://127.0.0.1:8000{{ netbox_base_url }}"
+    method: GET
+    status_code: [ 200, 302, 401, 403 ]
+  register: _nb_http
+  retries: 30
+  delay: 2
+  until: _nb_http.status is defined
+  changed_when: false
+
+- name: Check whether NetBox superuser exists
+  ansible.builtin.command:
+    cmd: >
+      docker compose --project-name "{{ netbox_compose_project }}" --env-file "{{ netbox_install_root }}/compose/netbox.env" -f "{{ netbox_install_root }}/compose/docker-compose.yml" exec -T netbox /opt/netbox/venv/bin/python /opt/netbox/netbox/manage.py shell -c "from django.contrib.auth import get_user_model; U=get_user_model(); import sys; sys.exit(0 if U.objects.filter(username='{{ netbox_superuser_name }}').exists() else 1)"
+  args:
+    chdir: "{{ netbox_install_root }}/compose"
+  register: _nb_su_exists
+  changed_when: false
+  failed_when: false
+
+- name: Create NetBox superuser (when missing)
+  ansible.builtin.command:
+    cmd: >
+      docker compose --project-name "{{ netbox_compose_project }}" --env-file "{{ netbox_install_root }}/compose/netbox.env" -f "{{ netbox_install_root }}/compose/docker-compose.yml" exec -T netbox /opt/netbox/venv/bin/python /opt/netbox/netbox/manage.py createsuperuser --no-input
+  args:
+    chdir: "{{ netbox_install_root }}/compose"
+  environment:
+    DJANGO_SUPERUSER_USERNAME: "{{ netbox_superuser_name }}"
+    DJANGO_SUPERUSER_EMAIL: "{{ netbox_superuser_email }}"
+    DJANGO_SUPERUSER_PASSWORD: "{{ netbox_superuser_password }}"
+  when: _nb_su_exists.rc != 0

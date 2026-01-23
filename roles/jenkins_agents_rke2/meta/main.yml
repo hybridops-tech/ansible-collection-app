@@ -1,0 +1,17 @@
+---
+# purpose: Role metadata for jenkins_agents_rke2
+# maintainer: HybridOps.Studio
+
+galaxy_info:
+  role_name: jenkins_agents_rke2
+  author: HybridOps.Studio
+  description: Configure Jenkins Kubernetes cloud for RKE2 pod agents via JCasC.
+  license: MIT-0
+  min_ansible_version: "2.15"
+  platforms:
+    - name: Ubuntu
+      versions: ["jammy", "noble"]
+    - name: EL
+      versions: ["9"]
+
+dependencies: []

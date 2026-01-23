@@ -1,0 +1,17 @@
+# purpose: Jenkins JCasC fragment to define a docker-based bootstrap agent (permanent node)
+# adr: ADR-0603-run-jenkins-controller-on-control-node-agents-on-rke2
+# maintainer: HybridOps.Studio
+
+jenkins:
+  nodes:
+    - permanent:
+        name: "{{ jenkins_agents_docker_agent_name }}"
+        nodeDescription: "Bootstrap agent on control node (Docker)."
+        labelString: "{{ jenkins_agents_docker_label }}"
+        numExecutors: 1
+        remoteFS: "{{ jenkins_agents_docker_agent_workdir }}"
+        mode: NORMAL
+        retentionStrategy: "always"
+        launcher:
+          inbound:
+            webSocket: {{ jenkins_agents_docker_use_websocket | bool | lower }}

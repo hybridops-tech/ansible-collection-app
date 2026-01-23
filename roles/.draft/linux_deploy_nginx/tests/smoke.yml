@@ -1,0 +1,13 @@
+# purpose: Smoke test for role linux_deploy_nginx
+# maintainer: HybridOps.Studio
+
+- name: Smoke test for role linux_deploy_nginx
+  hosts: linux_deploy_nginx_test
+  gather_facts: false
+  become: false
+
+  collections:
+    - hybridops.app
+
+  roles:
+    - role: hybridops.app.linux_deploy_nginx

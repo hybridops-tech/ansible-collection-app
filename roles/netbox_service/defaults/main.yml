@@ -1,0 +1,48 @@
+# purpose: Default variables for NetBox deployment (Docker Compose)
+# adr: ADR-0002, ADR-0501, ADR-0502
+# maintainer: HybridOps.Studio
+
+netbox_version: "v4.1.7"
+
+netbox_preflight_port_conflict_policy: "warn" # warn|fail|ignore
+
+netbox_smoke_only: false
+netbox_install_docker_engine: true
+
+netbox_compose_project: "netbox"
+netbox_install_root: "/opt/netbox"
+netbox_data_root: "/var/lib/netbox"
+
+netbox_hostname: "netbox"
+netbox_domain: "hybridops.local"
+netbox_base_url: "/"
+netbox_http_host_port: 8000
+
+netbox_require_db: true
+netbox_db_host: ""
+netbox_db_port: 5432
+netbox_db_name: "netbox"
+netbox_db_user: "netbox"
+netbox_db_password: ""
+
+netbox_redis_host: "redis"
+netbox_redis_port: 6379
+netbox_redis_password: ""
+
+netbox_secret_key: ""
+
+netbox_allowed_hosts:
+- "{{ netbox_hostname }}.{{ netbox_domain }}"
+- "{{ netbox_hostname }}"
+
+netbox_superuser_name: "admin"
+netbox_superuser_email: "admin@example.invalid"
+netbox_superuser_password: ""
+
+netbox_compose_pull: true
+netbox_service_enabled: true
+
+netbox_readiness_enabled: true
+netbox_readiness_url: "http://127.0.0.1:8000/api/"
+netbox_readiness_retries: 40
+netbox_readiness_delay: 3

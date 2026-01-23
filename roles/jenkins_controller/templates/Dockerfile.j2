@@ -1,0 +1,18 @@
+# purpose: Jenkins controller image with pre-installed plugins
+# adr: ADR-0603-run-jenkins-controller-on-control-node-agents-on-rke2
+# maintainer: HybridOps.Studio
+
+FROM {{ jenkins_image }}:{{ jenkins_version }}
+
+USER root
+
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends git curl \
+    && rm -rf /var/lib/apt/lists/*
+
+USER jenkins
+
+COPY plugins.txt /usr/share/jenkins/ref/plugins.txt
+RUN jenkins-plugin-cli --plugin-file /usr/share/jenkins/ref/plugins.txt
+
+ENV JAVA_OPTS="-Djenkins.install.runSetupWizard=false"

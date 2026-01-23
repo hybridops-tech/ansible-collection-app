@@ -1,0 +1,16 @@
+# purpose: Jenkins plugins for HybridOps.Platform controller
+# maintainer: HybridOps.Studio
+
+configuration-as-code
+workflow-aggregator
+pipeline-model-definition
+job-dsl
+git
+github
+pipeline-stage-view
+kubernetes
+docker-workflow
+ansible
+terraform
+prometheus
+timestamper

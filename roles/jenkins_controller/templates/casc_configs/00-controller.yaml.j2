@@ -1,0 +1,36 @@
+# purpose: Jenkins Configuration as Code for controller baseline
+# adr: ADR-0603-run-jenkins-controller-on-control-node-agents-on-rke2
+# maintainer: HybridOps.Studio
+
+jenkins:
+  systemMessage: "HybridOps.Platform — Jenkins controller"
+  numExecutors: {{ jenkins_controller_num_executors | default(0) }}
+
+  securityRealm:
+    local:
+      allowsSignup: false
+      users:
+        - id: "{{ jenkins_admin_username }}"
+          password: "{{ jenkins_admin_password }}"
+
+  authorizationStrategy:
+    loggedInUsersCanDoAnything:
+      allowAnonymousRead: false
+
+tool:
+  git:
+    installations:
+      - name: "Default"
+        home: "git"
+
+{% if (jenkins_github_token | default('') | string | trim | length) > 0 %}
+credentials:
+  system:
+    domainCredentials:
+      - credentials:
+          - string:
+              scope: GLOBAL
+              id: "github-token"
+              description: "GitHub access token"
+              secret: "{{ jenkins_github_token }}"
+{% endif %}

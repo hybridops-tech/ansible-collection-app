@@ -1,0 +1,17 @@
+# purpose: Jenkins node definition for bootstrap Docker agent on ctrl-01
+# adr: ADR-0603-run-jenkins-controller-on-control-node-agents-on-rke2
+# maintainer: HybridOps.Studio
+
+jenkins:
+  nodes:
+    - permanent:
+        name: "{{ jenkins_agents_docker_agent_name | default('ctrl-docker') }}"
+        nodeDescription: "Bootstrap Docker agent on ctrl-01"
+        remoteFS: "{{ jenkins_agents_docker_agent_workdir | default('/home/jenkins') }}"
+        numExecutors: 1
+        mode: NORMAL
+        labelString: "{{ jenkins_agents_docker_label | default('ctrl-docker') }}"
+        retentionStrategy: "always"
+        launcher:
+          inbound:
+            webSocket: {{ (jenkins_agents_docker_use_websocket | default(false) | bool) | lower }}

@@ -1,0 +1,129 @@
+# purpose: Build Jenkins controller Docker image with plugins and render baseline JCasC
+# adr: ADR-0603-run-jenkins-controller-on-control-node-agents-on-rke2
+# maintainer: HybridOps.Studio
+
+- name: Check Docker Engine is available for Jenkins controller
+  ansible.builtin.command: docker version --format '{{ "{{.Server.Version}}" }}'
+  register: jenkins_docker_check
+  changed_when: false
+  failed_when: false
+
+- name: Fail when Docker Engine is not available
+  ansible.builtin.fail:
+    msg: >
+      Docker Engine does not appear to be available on this host. hybridops.app.jenkins_controller requires Docker Engine and Docker Compose v2.
+
+      Command: docker version --format '{{ "{{.Server.Version}}" }}' Return code: {{ jenkins_docker_check.rc }} Output: {{ jenkins_docker_check.stdout | default('') | trim }} Error: {{ jenkins_docker_check.stderr | default('') | trim }}
+
+      Install and fix Docker first (for example via hybridops.common.docker_engine) until the docker CLI can talk to the daemon, then re-run this role.
+  when: jenkins_docker_check.rc != 0
+
+- name: Check Docker Compose v2 plugin is available
+  ansible.builtin.command: docker compose version
+  register: jenkins_compose_check
+  changed_when: false
+  failed_when: false
+
+- name: Fail when Docker Compose v2 plugin is not available
+  ansible.builtin.fail:
+    msg: >
+      Docker Compose v2 does not appear to be available on this host.
+
+      Command: docker compose version Return code: {{ jenkins_compose_check.rc }} Output: {{ jenkins_compose_check.stdout | default('') | trim }} Error: {{ jenkins_compose_check.stderr | default('') | trim }}
+
+      Install Docker Compose v2 (for example via hybridops.common.docker_engine) and re-run.
+  when: jenkins_compose_check.rc != 0
+
+- name: Fail when admin password is not provided
+  ansible.builtin.fail:
+    msg: >
+      jenkins_admin_password is required. Provide it via env (JENKINS_ADMIN_PASSWORD) or group_vars/host_vars aligned with the secrets strategy.
+  when:
+  - jenkins_admin_password is not defined or jenkins_admin_password is none or (jenkins_admin_password | string | trim | length) == 0
+
+- name: Ensure Jenkins controller directories exist
+  ansible.builtin.file:
+    path: "{{ item.path }}"
+    state: directory
+    mode: "{{ item.mode }}"
+    owner: "{{ item.owner | default(omit) }}"
+    group: "{{ item.group | default(omit) }}"
+  loop:
+  - { path: "{{ jenkins_home_path }}", mode: "0755" }
+  - { path: "{{ jenkins_home_path }}/jenkins_home", mode: "0755", owner: "{{ jenkins_uid }}", group: "{{ jenkins_gid }}" }
+  - { path: "{{ jenkins_home_path }}/jenkins_home/casc_configs", mode: "0755", owner: "{{ jenkins_uid }}", group: "{{ jenkins_gid }}" }
+
+- name: Stage JCasC secrets
+  ansible.builtin.include_tasks: casc_secrets.yml
+  vars:
+    jenkins_casc_secrets_stage: true
+    jenkins_casc_secrets_cleanup: false
+  when: jenkins_casc_secrets_enabled | bool
+
+- name: Copy controller Dockerfile into build context
+  ansible.builtin.template:
+    src: "Dockerfile.j2"
+    dest: "{{ jenkins_home_path }}/Dockerfile"
+    mode: "0644"
+
+- name: Copy controller plugin manifest into build context
+  ansible.builtin.copy:
+    src: "{{ jenkins_plugins_file }}"
+    dest: "{{ jenkins_home_path }}/plugins.txt"
+    mode: "0644"
+
+- name: Render controller JCasC baseline
+  ansible.builtin.template:
+    src: "casc_configs/00-controller.yaml.j2"
+    dest: "{{ jenkins_home_path }}/jenkins_home/casc_configs/00-controller.yaml"
+    mode: "0640"
+    owner: "{{ jenkins_uid }}"
+    group: "{{ jenkins_gid }}"
+  no_log: true
+
+- name: Render credentials JCasC (optional)
+  ansible.builtin.template:
+    src: "casc_configs/20-credentials.yaml.j2"
+    dest: "{{ jenkins_home_path }}/jenkins_home/casc_configs/20-credentials.yaml"
+    mode: "0640"
+    owner: "{{ jenkins_uid }}"
+    group: "{{ jenkins_gid }}"
+  no_log: true
+
+- name: Render Docker node JCasC
+  ansible.builtin.template:
+    src: "casc_configs/30-nodes-docker.yaml.j2"
+    dest: "{{ jenkins_home_path }}/jenkins_home/casc_configs/30-nodes-docker.yaml"
+    mode: "0640"
+    owner: "{{ jenkins_uid }}"
+    group: "{{ jenkins_gid }}"
+  no_log: true
+
+- name: Render Prometheus JCasC (optional)
+  ansible.builtin.template:
+    src: "casc_configs/40-prometheus.yaml.j2"
+    dest: "{{ jenkins_home_path }}/jenkins_home/casc_configs/40-prometheus.yaml"
+    mode: "0640"
+    owner: "{{ jenkins_uid }}"
+    group: "{{ jenkins_gid }}"
+  when: jenkins_prometheus_config_enabled | bool
+  no_log: true
+
+- name: Build Jenkins controller image (may take several minutes on first run)
+  community.docker.docker_image:
+    name: "{{ jenkins_controller_image }}"
+    tag: "{{ jenkins_version }}"
+    source: build
+    build:
+      path: "{{ jenkins_home_path }}"
+      pull: true
+    state: present
+    timeout: "{{ jenkins_build_timeout }}"
+  register: jenkins_build_result
+
+- name: Show Docker build output when run with -vv
+  ansible.builtin.debug:
+    var: jenkins_build_result.build
+  when:
+  - jenkins_build_result is defined
+  - (ansible_verbosity | default(0)) | int >= 2

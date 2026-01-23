@@ -1,0 +1,57 @@
+---
+# purpose: Defaults for RKE2-based Jenkins agents (Kubernetes plugin cloud + pod template)
+# adr: ADR-0603-run-jenkins-controller-on-control-node-agents-on-rke2
+# maintainer: HybridOps.Studio
+
+jenkins_agents_rke2_enabled: true
+
+# Jenkins controller (host-local) used for API token auth checks and optional restart.
+jenkins_controller_container_name: "jenkins-controller"
+jenkins_controller_compose_project_dir: "/opt/jenkins" # where docker-compose.yml lives (from jenkins_controller role)
+jenkins_agents_rke2_restart_controller: true
+
+# Where to write JCasC fragments (matches controller compose: CASC_JENKINS_CONFIG=/var/jenkins_home/casc_configs)
+jenkins_home_path: "/opt/jenkins"
+jenkins_casc_dir: "{{ jenkins_home_path }}/jenkins_home/casc_configs"
+
+# Jenkins URL that RKE2 pods can reach (NOT localhost).
+# You normally expose ctrl-01:8080 via node IP, DNS, or ingress.
+jenkins_agents_rke2_jenkins_url: ""
+
+# If you are using TCP JNLP (50000) instead of WebSocket.
+# For WebSocket-only, keep empty.
+jenkins_agents_rke2_jenkins_tunnel: ""
+
+# Kubernetes cloud identity in Jenkins
+jenkins_agents_rke2_cloud_name: "rke2"
+jenkins_agents_rke2_namespace: "jenkins-agents"
+
+# Kubernetes API access for Jenkins Kubernetes plugin.
+# Provide either a token (preferred) OR allow the role to manage SA/token secret.
+jenkins_agents_rke2_server_url: ""
+jenkins_agents_rke2_skip_tls_verify: false
+jenkins_agents_rke2_ca_cert_pem: "" # optional PEM content if not skipping TLS verify
+
+# Auth to Kubernetes API (used by Jenkins Kubernetes plugin)
+jenkins_agents_rke2_credentials_id: "rke2-sa-token"
+jenkins_agents_rke2_k8s_token: "" # if set, role will not attempt to mint token from cluster
+
+# Manage Kubernetes resources (namespace/sa/rbac/secret)
+jenkins_agents_rke2_manage_k8s: true
+jenkins_agents_rke2_kubeconfig: "/etc/rancher/rke2/rke2.yaml"
+jenkins_agents_rke2_kubecontext: "" # optional
+jenkins_agents_rke2_service_account_name: "jenkins-agents"
+jenkins_agents_rke2_token_secret_name: "jenkins-agents-token"
+
+# RBAC scope (namespace-local)
+jenkins_agents_rke2_create_rbac: true
+
+# Pod template defaults
+jenkins_agents_rke2_label: "rke2"
+jenkins_agents_rke2_agent_image: "hybridops/ci-agent-tools:0.1.0"
+jenkins_agents_rke2_agent_workdir: "/home/jenkins/agent"
+jenkins_agents_rke2_idle_minutes: 10
+jenkins_agents_rke2_instance_cap: 10
+
+# If true, configure Kubernetes agents to connect via WebSocket (recommended when feasible).
+jenkins_agents_rke2_use_websocket: true

@@ -1,0 +1,13 @@
+# purpose: Smoke test for role windows_install_sql
+# maintainer: HybridOps.Studio
+
+- name: Smoke test for role windows_install_sql
+  hosts: windows_install_sql_test
+  gather_facts: false
+  become: false
+
+  collections:
+    - hybridops.app
+
+  roles:
+    - role: hybridops.app.windows_install_sql

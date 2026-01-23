@@ -1,0 +1,26 @@
+pipeline {
+  agent { label 'ctrl-docker' }
+
+  options {
+    timestamps()
+    timeout(time: 10, unit: 'MINUTES')
+  }
+
+  stages {
+    stage('identity') {
+      steps {
+        sh '''
+          set -euxo pipefail
+          whoami
+          uname -a
+          docker version
+          docker compose version
+          terraform version | head -n 1 || true
+          kubectl version --client=true || true
+          helm version --short || true
+          ansible --version | head -n 1 || true
+        '''
+      }
+    }
+  }
+}

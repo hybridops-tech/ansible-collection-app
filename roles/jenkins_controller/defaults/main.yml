@@ -1,0 +1,91 @@
+# purpose: Default variables for Jenkins controller deployment
+# adr: ADR-0603-run-jenkins-controller-on-control-node-agents-on-rke2
+# maintainer: HybridOps.Studio
+
+# Persisting secrets locally is opt-in. Public role should not assume a repo checkout.
+jenkins_bootstrap_persist_to_control_secrets_env: false
+
+# When persistence is enabled, write to a stable operator-local location by default.
+# Platform repo can override this to "<repo>/control/secrets.vault.env".
+jenkins_control_secrets_env_path: >-
+  {{
+    (
+      (ansible_env.XDG_CONFIG_HOME | default(lookup('ansible.builtin.env','XDG_CONFIG_HOME'), true) | default('', true)) | trim
+    ) | length > 0
+    | ternary(
+        (ansible_env.XDG_CONFIG_HOME | default(lookup('ansible.builtin.env','XDG_CONFIG_HOME'), true) | trim) ~ '/hybridops/secrets.vault.env',
+        (ansible_env.HOME | default(lookup('ansible.builtin.env','HOME'), true) | default('/tmp', true)) ~ '/.config/hybridops/secrets.vault.env'
+      )
+  }}
+
+jenkins_gcp_runner_sa_key_src: >-
+  {{ (lookup('ansible.builtin.env', 'JENKINS_GCP_RUNNER_SA_KEY_SRC') | default('', true)) | string | trim }}
+
+jenkins_casc_secrets_enabled: false
+jenkins_casc_secrets_delete_staged: true
+
+jenkins_control_secrets_env_token_key: "JENKINS_ADMIN_API_TOKEN"
+
+# Print token to stdout is opt-in and should stay false by default.
+jenkins_bootstrap_api_token_print_once: false
+
+# Do not overwrite an existing token unless explicitly rotating.
+jenkins_bootstrap_api_token_force_rotate: false
+
+jenkins_image: "jenkins/jenkins"
+jenkins_version: "lts"
+
+jenkins_home_path: "/opt/jenkins"
+jenkins_http_port: 8080
+jenkins_agent_port: 50000
+jenkins_memory: "2g"
+jenkins_controller_num_executors: 0
+
+jenkins_container_name: "jenkins-controller"
+jenkins_controller_image: "hybridops/jenkins-controller"
+
+jenkins_network_name: "jenkins"
+jenkins_external_http_port: "{{ jenkins_http_port }}"
+jenkins_external_agent_port: "{{ jenkins_agent_port }}"
+
+jenkins_enable_healthcheck: true
+
+jenkins_casc_relative_path: "casc_configs/jenkins.yaml"
+jenkins_plugins_file: "plugins.txt"
+
+jenkins_build_timeout: 900
+
+jenkins_uid: 1000
+jenkins_gid: 1000
+
+jenkins_admin_username: "admin"
+
+# Credentials (optional). Provide via inventory/Vault. Prefer API token over password when both are provided.
+jenkins_admin_password: ""
+jenkins_github_token: ""
+jenkins_tfc_token: ""
+jenkins_netbox_token: ""
+jenkins_proxmox_api_token: ""
+
+jenkins_ssh_username: "jenkins"
+jenkins_ssh_private_key: ""
+jenkins_ssh_passphrase: ""
+
+# Bootstrap-only CI credentials (optional; rendered into JCasC when set)
+jenkins_ansible_vault_password: ""
+jenkins_gcp_runner_sa_json: ""
+
+# Host-local controller URL used by Ansible tasks running on the target host.
+jenkins_controller_api_url: "http://localhost:{{ jenkins_external_http_port }}"
+
+jenkins_bootstrap_api_token_enabled: false
+jenkins_admin_api_token_name: "hybridops-ansible"
+jenkins_admin_api_token_file: "{{ jenkins_home_path }}/.secrets/admin_api_token"
+
+# If provided, the role will not mint a new token.
+jenkins_admin_api_token: ""
+
+# Prometheus plugin noise control (JCasC)
+jenkins_prometheus_config_enabled: true
+jenkins_prometheus_collect_disk_usage: false
+jenkins_prometheus_collecting_metrics_period_seconds: 120

@@ -1,0 +1,24 @@
+---
+# purpose: Smoke test for hybridops.app.jenkins_agents_docker
+# note: Assumes a Jenkins controller is already running on the target host.
+# prerequisite: Docker Engine + Compose v2 installed, and controller deployed (hybridops.app.jenkins_controller).
+
+- name: Smoke-test Jenkins docker bootstrap agent on cicd_test hosts
+  hosts: cicd_test
+  become: true
+  gather_facts: true
+
+  collections:
+  - hybridops.app
+
+  vars:
+    jenkins_home_path: "/opt/jenkins"
+    jenkins_external_http_port: 8080
+    jenkins_container_name: "jenkins-controller"
+    jenkins_network_name: "jenkins"
+    # Secret injection:
+    # Provide JENKINS_ADMIN_PASSWORD via CI secret store / Vault / env before running.
+    # The role fail fast if this is empty.
+
+  roles:
+  - role: jenkins_agents_docker

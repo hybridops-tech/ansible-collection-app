@@ -1,0 +1,28 @@
+# Python env and cache
+.venv/
+__pycache__/
+*.py[cod]
+*.pyo
+
+# Build artefacts
+dist/
+build/
+*.tar.gz
+
+# Ansible / Molecule / test output
+.molecule/
+.cache/
+tests/output/
+
+# Editor / OS noise
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# Misc
+*.log
+*.tmp
+*.swp
+
+*.tar.gz

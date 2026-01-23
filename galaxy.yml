@@ -1,0 +1,49 @@
+# purpose: Ansible Galaxy metadata for hybridops.app collection
+# adr: ADR-0606-ansible-collections-release-process
+# maintainer: HybridOps.Studio
+
+namespace: hybridops
+name: app
+version: "0.1.0"
+
+readme: README.md
+description: >
+  Application and platform roles for the HybridOps.Studio automation platform. Includes Jenkins, RKE2, NetBox, Moodle and core Linux/Windows services.
+
+authors:
+- HybridOps.Studio
+
+license:
+- MIT-0
+
+tags:
+- academy
+- hybridops
+- platform
+- jenkins
+- rke2
+- netbox
+- moodle
+- linux
+- windows
+- automation
+- networking
+- eveng
+- lab
+
+homepage: https://docs.hybridops.studio
+documentation: https://docs.hybridops.studio
+repository: https://github.com/hybridops-studio/ansible-collection-app
+issues: https://github.com/hybridops-studio/ansible-collection-app/issues
+
+dependencies:
+  hybridops.common: ">=0.1.0"
+  hybridops.helper: ">=0.1.0"
+
+build_ignore:
+- .git
+- .github
+- .venv
+- dist
+- tests/output
+- __pycache__

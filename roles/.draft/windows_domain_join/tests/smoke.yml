@@ -1,0 +1,13 @@
+# purpose: Smoke test for role windows_domain_join
+# maintainer: HybridOps.Studio
+
+- name: Smoke test for role windows_domain_join
+  hosts: windows_domain_join_test
+  gather_facts: false
+  become: false
+
+  collections:
+    - hybridops.app
+
+  roles:
+    - role: hybridops.app.windows_domain_join

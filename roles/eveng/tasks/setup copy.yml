@@ -1,0 +1,364 @@
+---
+# EVE-NG installation and configuration tasks
+# Supports Ubuntu 22.04 (Jammy) with Community Edition
+
+- name: Verify Ubuntu version
+  assert:
+    that:
+    - ansible_distribution == "Ubuntu"
+    - ansible_distribution_version is version('22.04', '==')
+    fail_msg: "EVE-NG requires Ubuntu 22.04 (Jammy).Detected:  {{ ansible_distribution }} {{ ansible_distribution_version }}"
+    success_msg: "Ubuntu 22.04 detected"
+
+- name: Check if EVE-NG is installed
+  stat:
+    path: /opt/unetlab/html/api.php
+  register: eveng_installed
+
+- name: Enable root SSH login
+  lineinfile:
+    path: /etc/ssh/sshd_config
+    regexp: '^#? PermitRootLogin'
+    line: 'PermitRootLogin yes'
+    backup: yes
+  notify: restart sshd
+  when: not eveng_installed.stat.exists
+
+- name: Add EVE-NG GPG key
+  shell: |
+    wget -O - http://www.eve-ng.net/jammy/eczema@ecze.com.gpg.key | gpg --dearmor -o /etc/apt/trusted.gpg.d/eve-ng.gpg
+  args:
+    creates: /etc/apt/trusted.gpg.d/eve-ng.gpg
+  when: not eveng_installed.stat.exists
+
+- name: Install software-properties-common
+  apt:
+    name: software-properties-common
+    state: present
+    update_cache: yes
+  when: not eveng_installed.stat.exists
+
+- name: Add EVE-NG repository
+  copy:
+    content: "deb [arch=amd64] http://www.eve-ng.net/jammy jammy main\n"
+    dest: /etc/apt/sources.list.d/eve-ng.list
+    mode: '0644'
+  when: not eveng_installed.stat.exists
+
+- name: Update apt cache
+  apt:
+    update_cache: yes
+  when: not eveng_installed.stat.exists
+
+- name: Install python2
+  apt:
+    name: python2
+    state: present
+  when: not eveng_installed.stat.exists
+
+- name: Install EVE-NG dependencies
+  apt:
+    name:
+    - eve-ng-pro-guacamole
+    - eve-ng-qemu
+    state: present
+    install_recommends: yes
+  environment:
+    DEBIAN_FRONTEND: noninteractive
+  when: not eveng_installed.stat.exists
+  ignore_errors: yes
+
+- name: Install EVE-NG package
+  apt:
+    name: eve-ng
+    state: present
+    install_recommends: yes
+  environment:
+    DEBIAN_FRONTEND: noninteractive
+  when: not eveng_installed.stat.exists
+  register: eveng_install
+  async: 3600
+  poll: 30
+
+- name: Configure EVE-NG
+  block:
+  - name: Set root password
+    shell: echo "root:{{ eveng_root_password }}" | chpasswd
+    no_log: true
+
+  - name: Set hostname
+    hostname:
+      name: "{{ eveng_hostname | default(inventory_hostname) | default('eve-ng') }}"
+
+  - name: Update /etc/hosts
+    lineinfile:
+      path: /etc/hosts
+      regexp: '^127\.0\.1\.1'
+      line: "127.0.1.1 {{ eveng_hostname | default(inventory_hostname) }}"
+
+  - name: Mark EVE-NG as configured
+    file:
+      path: /opt/unetlab/.configured
+      state: touch
+      mode: '0644'
+
+  - name: Restart systemd-logind
+    systemd:
+      name: systemd-logind
+      state: restarted
+
+  when: eveng_install is changed
+
+- name: Install Python MySQL library
+  apt:
+    name: python3-pymysql
+    state: present
+
+- name: Verify EVE-NG installation
+  stat:
+    path: /opt/unetlab/html/api.php
+  register: eveng_verified
+
+- name: Fail if EVE-NG not installed
+  fail:
+    msg: "EVE-NG installation failed - /opt/unetlab/html/api.php not found"
+  when: not eveng_verified.stat.exists
+
+- name: Detect PHP version
+  shell: php -r "echo PHP_MAJOR_VERSION .'.' .PHP_MINOR_VERSION;"
+  register: php_version
+  changed_when: false
+
+- name: Create config.php
+  copy:
+    src: /opt/unetlab/html/includes/config.php.distribution
+    dest: /opt/unetlab/html/includes/config.php
+    remote_src: yes
+    mode: '0644'
+    force: no
+
+- name: Configure PHP settings
+  lineinfile:
+    path: "/etc/php/{{ php_version.stdout }}/apache2/php.ini"
+    regexp: "{{ item.regexp }}"
+    line: "{{ item.line }}"
+    backup: yes
+  loop:
+  - { regexp: '^upload_max_filesize', line: "upload_max_filesize = {{ eveng_php_upload_max }}" }
+  - { regexp: '^post_max_size', line: "post_max_size = {{ eveng_php_post_max }}" }
+  - { regexp: '^max_execution_time', line: "max_execution_time = {{ eveng_php_max_execution }}" }
+  - { regexp: '^memory_limit', line: "memory_limit = {{ eveng_php_memory_limit }}" }
+  notify: restart apache2
+  when:
+  - eveng_configure_php
+  - eveng_resource_profile == 'standard'
+
+- name: Configure kernel parameters
+  sysctl:
+    name: "{{ item.name }}"
+    value: "{{ item.value }}"
+    state: present
+    sysctl_file: /etc/sysctl.d/99-eveng.conf
+    reload: yes
+  loop:
+  - { name: 'net.ipv4.ip_forward', value: '1' }
+  - { name: 'net.ipv4.conf.all.rp_filter', value: '0' }
+  - { name: 'net.ipv4.conf.default.rp_filter', value: '0' }
+  when: eveng_configure_sysctl
+
+- name: Disable swap
+  shell: swapoff -a && sed -i.bak '/swap/d' /etc/fstab
+  args:
+    executable: /bin/bash
+  when: eveng_disable_swap
+  changed_when: false
+
+- name: Fix EVE-NG file permissions
+  command: /opt/unetlab/wrappers/unl_wrapper -a fixpermissions
+  changed_when: false
+
+- name: Start and enable Apache
+  systemd:
+    name: apache2
+    state: started
+    enabled: yes
+
+- name: Start and enable MySQL
+  systemd:
+    name: mysql
+    state: started
+    enabled: yes
+  register: mysql_service
+  ignore_errors: yes
+
+- name: Start and enable MariaDB
+  systemd:
+    name: mariadb
+    state: started
+    enabled: yes
+  when: mysql_service is failed
+
+- name: Wait for database server
+  wait_for:
+    port: 3306
+    delay: 5
+    timeout: 60
+
+- name: Check if EVE-NG database exists
+  command: mysql -e "SHOW DATABASES LIKE 'eve_ng_db';"
+  register: eveng_db_check
+  changed_when: false
+  failed_when: false
+
+- name: Initialize EVE-NG database
+  command: /opt/unetlab/wrappers/unl_wrapper -a init
+  when: "'eve_ng_db' not in eveng_db_check.stdout"
+  register: eveng_db_init
+  failed_when: false
+
+- name: Verify database initialized
+  command: mysql -e "SHOW DATABASES LIKE 'eve_ng_db';"
+  register: eveng_db_recheck
+  changed_when: false
+  when: eveng_db_init is changed
+
+- name: Check if admin user exists
+  command: mysql eve_ng_db -e "SELECT COUNT(*) FROM users WHERE username='admin';"
+  register: admin_exists
+  changed_when: false
+  failed_when: false
+  when: "'eve_ng_db' in eveng_db_check.stdout"
+
+- name: Ensure admin pod exists
+  command: mysql eve_ng_db -e "INSERT IGNORE INTO pods (id, username) VALUES (0, 'admin');"
+  register: admin_pod_result
+  changed_when: "'Records: 1' in admin_pod_result.stderr or 'Records: 1' in admin_pod_result.stdout"
+  failed_when: false
+  when:
+  - "'eve_ng_db' in eveng_db_check.stdout"
+  - admin_exists is defined
+  - admin_exists.rc == 0
+
+- name: Update admin password
+  mysql_query:
+    login_db: eve_ng_db
+    login_unix_socket: /var/run/mysqld/mysqld.sock
+    query: |
+      UPDATE users 
+      SET password = SHA2('{{ eveng_admin_password }}', 256)
+      WHERE username = 'admin';
+  when:
+  - eveng_admin_password is defined
+  - eveng_admin_password != ''
+  - "'eve_ng_db' in eveng_db_check.stdout"
+  - admin_exists is defined
+  - admin_exists.stdout_lines[1] != '0'
+  no_log: true
+
+- name: Manage additional users
+  mysql_query:
+    login_db: eve_ng_db
+    login_unix_socket: /var/run/mysqld/mysqld.sock
+    query: |
+      INSERT INTO users (username, password, name, email, role, expiration)
+      VALUES ('{{ item.username }}', SHA2('{{ item.password }}', 256), '{{ item.name }}', '{{ item.email }}', '{{ item.role | default("user") }}', '-1')
+      ON DUPLICATE KEY UPDATE
+        password = SHA2('{{ item.password }}', 256),
+        name = '{{ item.name }}',
+        email = '{{ item.email }}',
+        role = '{{ item.role | default("user") }}';
+  loop: "{{ eveng_users | default([]) }}"
+  no_log: true
+  when:
+  - eveng_users is defined
+  - eveng_users | length > 0
+  - "'eve_ng_db' in eveng_db_check.stdout"
+
+- name: Ensure additional user pods exist
+  command: mysql eve_ng_db -e "INSERT IGNORE INTO pods (id, username) VALUES ({{ idx + 1 }}, '{{ item.username }}');"
+  loop: "{{ eveng_users | default([]) }}"
+  loop_control:
+    index_var: idx
+  changed_when: false
+  failed_when: false
+  when:
+  - eveng_users is defined
+  - eveng_users | length > 0
+  - "'eve_ng_db' in eveng_db_check.stdout"
+
+- name: Flush handlers
+  meta: flush_handlers
+
+- name: Wait for Apache
+  wait_for:
+    port: 80
+    delay: 2
+    timeout: 30
+
+- name: Verify installation
+  block:
+  - name: Check Apache is responding
+    uri:
+      url: "http://{{ ansible_default_ipv4.address }}"
+      status_code: 200
+      timeout: 10
+    register: apache_check
+
+  - name: Verify database tables exist
+    command: mysql eve_ng_db -e "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema='eve_ng_db';"
+    register: table_count
+    failed_when: table_count.stdout_lines[1] | int < 3
+    changed_when: false
+
+  - name: Verify admin user exists
+    command: mysql eve_ng_db -e "SELECT username FROM users WHERE username='admin';"
+    register: admin_verify
+    failed_when: "'admin' not in admin_verify.stdout"
+    changed_when: false
+
+  - name: Check KVM module status
+    command: lsmod
+    register: lsmod_output
+    failed_when: false
+    changed_when: false
+
+  - name: Warn if KVM not available
+    debug:
+      msg: "KVM module not loaded - nested virtualization unavailable"
+    when: "'kvm' not in lsmod_output.stdout"
+
+  - name: Verify qemu directory exists
+    stat:
+      path: /opt/unetlab/addons/qemu
+    register: qemu_dir
+    failed_when: not qemu_dir.stat.exists
+
+  - name: Test API authentication
+    uri:
+      url: "http://{{ ansible_default_ipv4.address }}/api/auth/login"
+      method: POST
+      body_format: json
+      body:
+        username: admin
+        password: "{{ eveng_admin_password | default('eve') }}"
+      status_code: 200
+      return_content: yes
+      validate_certs: no
+    register: api_test
+    failed_when: api_test.json.status | default('fail') != 'success'
+    retries: 3
+    delay: 5
+
+  rescue:
+  - name: Report verification failure
+    debug:
+      msg:
+      - "Installation verification failed"
+      - "Apache:  {{ 'OK' if apache_check is defined and apache_check.status == 200 else 'FAILED' }}"
+      - "Database: {{ 'OK' if table_count is defined else 'FAILED' }}"
+      - "Admin user: {{ 'OK' if admin_verify is defined and 'admin' in admin_verify.stdout else 'FAILED' }}"
+      - "API: {{ 'OK' if api_test is defined and api_test.status == 200 else 'FAILED' }}"
+
+  - name: Fail playbook
+    fail:
+      msg: "EVE-NG installation verification failed"

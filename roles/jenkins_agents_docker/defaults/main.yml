@@ -1,0 +1,41 @@
+---
+# purpose: Defaults for docker-based Jenkins bootstrap agent configuration
+# adr: ADR-0603-run-jenkins-controller-on-control-node-agents-on-rke2
+# maintainer: HybridOps.Studio
+
+jenkins_agents_docker_enabled: true
+
+# Host-local URL used for Jenkins API calls (runs on the target host, not inside the Docker network).
+jenkins_agents_docker_api_url: "http://localhost:{{ jenkins_external_http_port | default(8080) }}"
+
+# Internal controller URL reachable from the Docker network.
+jenkins_agents_docker_jenkins_url: "http://{{ jenkins_container_name | default('jenkins-controller') }}:8080"
+jenkins_agents_docker_jenkins_tunnel: "{{ jenkins_container_name | default('jenkins-controller') }}:50000"
+
+# Jenkins auth inputs (set via inventory/Vault). Prefer API token over password when both are provided.
+jenkins_admin_username: "admin"
+jenkins_admin_password: ""
+jenkins_admin_api_token: ""
+
+jenkins_agents_docker_label: "ctrl-docker"
+jenkins_agents_docker_agent_name: "{{ jenkins_agents_docker_label }}"
+jenkins_agents_docker_container_name: "jenkins-agent-{{ jenkins_agents_docker_label }}"
+
+# Use a tools-enabled inbound agent image for bootstrap orchestration runs.
+jenkins_agents_docker_agent_image: "hybridops/ci-agent-tools:0.1.0"
+jenkins_agents_docker_agent_workdir: "/home/jenkins/agent"
+
+# Default to TCP/JNLP. WebSocket mode depends on Jenkins + plugin/runtime behavior and may vary by environment.
+jenkins_agents_docker_use_websocket: false
+
+# Inbound agent secret. Recommended: provide via Vault/AKV and keep node creation in JCasC.
+jenkins_agents_docker_agent_secret: ""
+
+# Hardened-by-default: do not rely on Script Console in a public role.
+# If you enable node management, Jenkins must allow /scriptText for the admin principal.
+jenkins_agents_docker_manage_node: false
+jenkins_agents_docker_script_text_url: "{{ jenkins_agents_docker_api_url }}/scriptText"
+
+# Mount the host Docker socket for Docker CLI usage inside the agent container.
+jenkins_agents_docker_mount_docker_socket: true
+jenkins_agents_docker_docker_socket_path: "/var/run/docker.sock"
