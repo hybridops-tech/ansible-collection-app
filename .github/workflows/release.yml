@@ -1,0 +1,55 @@
+# purpose: Publish Ansible collection to Ansible Galaxy on version tag.
+# adr: ADR-0606-ansible-collections-release-process
+# maintainer: HybridOps.Studio
+
+name: Publish to Ansible Galaxy
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: read
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install tooling
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Verify tag matches galaxy.yml version
+        run: |
+          TAG_VERSION="${GITHUB_REF_NAME#v}"
+          GALAXY_VERSION="$(python -c "import yaml; print(yaml.safe_load(open('galaxy.yml'))['version'])")"
+          if [ "${TAG_VERSION}" != "${GALAXY_VERSION}" ]; then
+            echo "ERROR: Tag version '${TAG_VERSION}' does not match galaxy.yml version '${GALAXY_VERSION}'."
+            exit 1
+          fi
+
+      - name: Build collection
+        run: |
+          ansible-galaxy collection build
+
+      - name: Publish to Galaxy
+        env:
+          ANSIBLE_GALAXY_API_KEY: ${{ secrets.ANSIBLE_GALAXY_API_KEY }}
+        run: |
+          if [ -z "${ANSIBLE_GALAXY_API_KEY}" ]; then
+            echo "ERROR: ANSIBLE_GALAXY_API_KEY secret is not set."
+            exit 1
+          fi
+          TARBALL="$(ls -1t *.tar.gz | head -n 1)"
+          ansible-galaxy collection publish "${TARBALL}" --api-key "${ANSIBLE_GALAXY_API_KEY}"

@@ -1,16 +1,17 @@
-# purpose: Pre-commit hooks for HybridOps.* Ansible collection
+# purpose: Pre-commit hooks for HybridOps Ansible collections.
 # adr: ADR-0606-ansible-collections-release-process
 # maintainer: HybridOps.Studio
 
 exclude: >
   ^(
-    .*/\.private_gists/|
-    .*/\.bak/|
-    .*/\.tox/|
-    .*/\.venv/|
-    .*/tests/output/|
-    .*/build/|
-    .*/dist/|
+    \.private_gists/|
+    \.bak/|
+    \.tox/|
+    \.venv/|
+    tests/output/|
+    output/|
+    build/|
+    dist/|
     .*\.zip$
   )
 
@@ -18,28 +19,28 @@ default_language_version:
   python: python3
 
 repos:
-- repo: https://github.com/adrienverge/yamllint
-  rev: v1.37.1
-  hooks:
-  - id: yamllint
-    types: [ yaml ]
+  - repo: https://github.com/adrienverge/yamllint
+    rev: v1.37.1
+    hooks:
+      - id: yamllint
+        types: [yaml]
 
-- repo: https://github.com/pre-commit/pre-commit-hooks
-  rev: v6.0.0
-  hooks:
-  - id: check-yaml
-    args: [ --unsafe ]
-  - id: end-of-file-fixer
-  - id: trailing-whitespace
-    args: [ "--markdown-linebreak-ext=md,markdown,mdx" ]
-  - id: mixed-line-ending
-  - id: check-merge-conflict
-  - id: detect-private-key
-  - id: check-executables-have-shebangs
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v6.0.0
+    hooks:
+      - id: check-yaml
+        args: [--unsafe]
+      - id: end-of-file-fixer
+      - id: trailing-whitespace
+        args: ["--markdown-linebreak-ext=md,markdown,mdx"]
+      - id: mixed-line-ending
+      - id: check-merge-conflict
+      - id: detect-private-key
+      - id: check-executables-have-shebangs
 
-- repo: https://github.com/ansible/ansible-lint
-  rev: v25.9.0
-  hooks:
-  - id: ansible-lint
-    args: [ "-c", ".config/linters/ansible-lint.yml" ]
-    stages: [ manual ]
+  - repo: https://github.com/ansible/ansible-lint
+    rev: v25.9.0
+    hooks:
+      - id: ansible-lint
+        args: ["-c", ".config/linters/ansible-lint.yml"]
+        stages: [manual]

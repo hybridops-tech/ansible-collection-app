@@ -1,8 +1,11 @@
 # Python env and cache
 .venv/
+.tox/
 __pycache__/
 *.py[cod]
 *.pyo
+.pytest_cache/
+.mypy_cache/
 
 # Build artefacts
 dist/
@@ -13,6 +16,7 @@ build/
 .molecule/
 .cache/
 tests/output/
+output/
 
 # Editor / OS noise
 .vscode/
@@ -24,5 +28,3 @@ Thumbs.db
 *.log
 *.tmp
 *.swp
-
-*.tar.gz

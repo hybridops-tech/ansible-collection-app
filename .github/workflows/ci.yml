@@ -1,22 +1,26 @@
-# purpose: CI for hybridops.app Ansible collection (lint + build sanity)
+# purpose: CI for HybridOps Ansible collection (lint + build sanity).
 # adr: ADR-0606-ansible-collections-release-process
 # maintainer: HybridOps.Studio
 
-name: hybridops-app CI
+name: hybridops.app CI
 
 on:
   push:
-    branches: [ main ]
+    branches: [main]
+    tags: ["v*"]
   pull_request:
-    branches: [ main ]
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: collection-ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   lint-and-build:
     runs-on: ubuntu-latest
-
-    env:
-      PIP_DISABLE_PIP_VERSION_CHECK: "1"
-      PIP_NO_PROGRESS_BAR: "off"
 
     steps:
       - name: Checkout
@@ -26,22 +30,24 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: "3.12"
+          cache: pip
 
-      - name: Install collection requirements
+      - name: Install tooling
         run: |
           python -m pip install --upgrade pip
-          pip install -r requirements.txt
-
-      - name: Run pre-commit checks
-        run: |
+          if [ -f requirements.txt ]; then
+            pip install -r requirements.txt
+          fi
           pip install pre-commit
+
+      - name: Run pre-commit
+        run: |
           pre-commit run --all-files
-        # continue-on-error: true
 
       - name: Run ansible-lint
         run: |
           ansible-lint -c .config/linters/ansible-lint.yml
 
-      - name: Build collection (sanity check)
+      - name: Build collection (sanity)
         run: |
           ansible-galaxy collection build
