@@ -1,6 +1,6 @@
 # purpose: CI for HybridOps Ansible collection (lint + build sanity).
 # adr: ADR-0606-ansible-collections-release-process
-# maintainer: HybridOps.Studio
+# maintainer: HybridOps.Tech
 
 name: hybridops.app CI
 

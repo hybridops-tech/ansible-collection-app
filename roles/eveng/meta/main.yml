@@ -1,19 +1,19 @@
 ---
-galaxy_info: 
+galaxy_info:
   role_name: eveng
   author: yourusername
   description: Automated EVE-NG installation and configuration
   company: HybridOps
-  
+
   license: MIT
-  
+
   min_ansible_version: "2.10"
-  
+
   platforms:
     - name: Ubuntu
       versions:
         - jammy  # 22.04
-  
+
   galaxy_tags:
     - networking
     - emulation

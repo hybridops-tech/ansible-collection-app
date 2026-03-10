@@ -4,15 +4,15 @@ Deploy NetBox on a Linux VM using Docker Compose.
 
 This role renders and runs a Docker Compose project (NetBox web + worker + housekeeping + Redis), configured to use an **external PostgreSQL** database tier.
 
-## Architecture alignment (HybridOps.Studio)
+## Architecture alignment (HybridOps.Tech)
 
-This role is the “NetBox service runtime” building block in the HybridOps.Studio bootstrap flow:
+This role is the “NetBox service runtime” building block in the HybridOps.Tech bootstrap flow:
 
-- [ADR-0002 — Source of Truth: NetBox-Driven Inventory](https://docs.hybridops.studio/adr/ADR-0002-source-of-truth-netbox-driven-inventory/) — bring NetBox up, seed it, then pivot automation to NetBox-backed inventories.
-- [ADR-0501 — PostgreSQL on dedicated VM with DR replication](https://docs.hybridops.studio/adr/ADR-0501-postgresql-on-dedicated-vm-with-dr-replication/) — NetBox consumes an external PostgreSQL tier (outside Kubernetes).
-- [ADR-0020 — Secrets Strategy](https://docs.hybridops.studio/adr/ADR-0020-secrets-strategy-akv-now-sops-fallback-vault-later/) and [ADR-0502 — ESO + AKV](https://docs.hybridops.studio/adr/ADR-0502-external-secrets-operator-akv/) — secret values are supplied by the caller; this role does not mint secrets.
+- [ADR-0002 — Source of Truth: NetBox-Driven Inventory](https://docs.hybridops.tech/adr/ADR-0002-source-of-truth-netbox-driven-inventory/) — bring NetBox up, seed it, then pivot automation to NetBox-backed inventories.
+- [ADR-0501 — PostgreSQL on dedicated VM with DR replication](https://docs.hybridops.tech/adr/ADR-0501-postgresql-on-dedicated-vm-with-dr-replication/) — NetBox consumes an external PostgreSQL tier (outside Kubernetes).
+- [ADR-0020 — Secrets Strategy](https://docs.hybridops.tech/adr/ADR-0020-secrets-strategy-akv-now-sops-fallback-vault-later/) and [ADR-0502 — ESO + AKV](https://docs.hybridops.tech/adr/ADR-0502-external-secrets-operator-akv/) — secret values are supplied by the caller; this role does not mint secrets.
 
-> ADR references are specific to HybridOps.Studio. The role remains usable as a general-purpose NetBox Compose deployer.
+> ADR references are specific to HybridOps.Tech. The role remains usable as a general-purpose NetBox Compose deployer.
 
 ## Purpose and scope
 
@@ -155,7 +155,7 @@ netbox_superuser_password: "{{ lookup('env', 'NETBOX_SUPERUSER_PASSWORD') | defa
 
 ## What “seeding” means
 
-Seeding is the step where NetBox is populated with your initial platform model (sites, prefixes, VLANs, VMs, primary IPs, tags/roles). In HybridOps.Studio, seeding is a separate concern:
+Seeding is the step where NetBox is populated with your initial platform model (sites, prefixes, VLANs, VMs, primary IPs, tags/roles). In HybridOps.Tech, seeding is a separate concern:
 
 1. Bring up PostgreSQL.
 2. Deploy NetBox (this role).
@@ -183,5 +183,5 @@ Common causes of failed readiness:
 - Code: [MIT-0](https://spdx.org/licenses/MIT-0.html)  
 - Documentation & diagrams: [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/)
 
-See the [HybridOps.Studio licensing overview](https://docs.hybridops.studio/briefings/legal/licensing/)
+See the [HybridOps.Tech licensing overview](https://docs.hybridops.tech/briefings/legal/licensing/)
 for project-wide licence details, including branding and trademark notes.

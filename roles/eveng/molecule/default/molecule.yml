@@ -10,7 +10,7 @@ driver:
       ansible_connection: ssh
 
 platforms:
-- name: eveng-molecule-test
+  - name: eveng-molecule-test
 
 provisioner:
   name: ansible
@@ -29,6 +29,6 @@ verifier:
 
 scenario:
   test_sequence:
-  - syntax
-  - converge
-  - verify
+    - syntax
+    - converge
+    - verify

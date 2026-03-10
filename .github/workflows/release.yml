@@ -1,6 +1,6 @@
 # purpose: Publish Ansible collection to Ansible Galaxy on version tag.
 # adr: ADR-0606-ansible-collections-release-process
-# maintainer: HybridOps.Studio
+# maintainer: HybridOps.Tech
 
 name: Publish to Ansible Galaxy
 

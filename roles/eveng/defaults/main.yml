@@ -31,8 +31,8 @@ eveng_root_password: "{{ lookup('env', 'EVENG_ROOT_PASSWORD') | default('eve', t
 eveng_admin_password: "{{ lookup('env', 'EVENG_ADMIN_PASSWORD') | default('eve', true) }}"
 eveng_users: []
 
-# Example:  
-# eveng_users: 
+# Example:
+# eveng_users:
 #   - username: john.doe
 #     name: John Doe
 #     email: john@example.com
