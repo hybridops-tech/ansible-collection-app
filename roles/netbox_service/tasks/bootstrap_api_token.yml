@@ -10,11 +10,14 @@
       --project-name "{{ netbox_compose_project }}"
       --env-file "{{ netbox_install_root }}/compose/netbox.env"
       -f "{{ netbox_install_root }}/compose/docker-compose.yml"
-      exec -T netbox
-      /opt/netbox/venv/bin/python
-      /opt/netbox/netbox/manage.py shell -c
+      exec -T netbox /opt/netbox/venv/bin/python
+      /opt/netbox/netbox/manage.py
+      shell -c
       "from django.contrib.auth import get_user_model; import importlib, importlib.util, sys;
-      U=get_user_model(); username='{{ netbox_api_token_username }}'; key='{{ netbox_api_token_key }}'; desc='{{ netbox_api_token_description }}';
+      U=get_user_model();
+      username='{{ netbox_api_token_username }}';
+      key='{{ netbox_api_token_key }}';
+      desc='{{ netbox_api_token_description }}';
       mod=('users.models' if importlib.util.find_spec('users.models') else 'rest_framework.authtoken.models');
       Token=getattr(importlib.import_module(mod), 'Token');
       u=U.objects.get(username=username); tok=Token.objects.filter(key=key).first();

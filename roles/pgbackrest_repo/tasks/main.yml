@@ -21,7 +21,12 @@
 - name: Normalize secondary repo toggle and defaults
   ansible.builtin.set_fact:
     _hyops_pgbackrest_secondary_enabled: "{{ secondary_enabled | default(false) | bool }}"
-    _hyops_pgbackrest_secondary_repo_path: "{{ (secondary_repo_path | default('') | string) if (secondary_repo_path | default('') | string | length) > 0 else (repo_path | string) }}"
+    _hyops_pgbackrest_secondary_repo_path: >-
+      {{
+        (secondary_repo_path | default('') | string)
+        if (secondary_repo_path | default('') | string | length) > 0
+        else (repo_path | string)
+      }}
   changed_when: false
 
 - name: Normalize secondary backend
@@ -126,7 +131,8 @@
     fail_msg: >-
       Missing GCS service account JSON in environment. Ensure vault/env provides:
       {{ gcs_sa_json_env }} (service account JSON content).
-      Hint: export {{ gcs_sa_json_env }}="$(cat sa.json)"; hyops secrets set --env <env> --from-env {{ gcs_sa_json_env }}
+      Hint: export {{ gcs_sa_json_env }}="$(cat sa.json)";
+      hyops secrets set --env <env> --from-env {{ gcs_sa_json_env }}
   no_log: true
   when: _hyops_pgbackrest_backend == 'gcs'
 
@@ -186,7 +192,9 @@
     create_home: false
     shell: /sbin/nologin
     state: present
-  when: _hyops_pgbackrest_backend == 'gcs' or (_hyops_pgbackrest_secondary_enabled and _hyops_pgbackrest_secondary_backend == 'gcs')
+  when:
+    - _hyops_pgbackrest_backend == 'gcs'
+      or (_hyops_pgbackrest_secondary_enabled and _hyops_pgbackrest_secondary_backend == 'gcs')
 
 - name: Ensure parent directory exists for gcs_sa_dest
   become: true
@@ -245,28 +253,49 @@
   ansible.builtin.set_fact:
     pgbackrest_conf:
       global:
-        - { option: "log-level-file", value: "detail" }
-        - { option: "log-path", value: "/var/log/pgbackrest" }
-        - { option: "repo1-type", value: "s3" }
-        - { option: "repo1-path", value: "{{ repo_path }}" }
-        - { option: "repo1-s3-key", value: "{{ lookup('ansible.builtin.env', s3_access_key_env | string) }}" }
-        - { option: "repo1-s3-key-secret", value: "{{ lookup('ansible.builtin.env', s3_secret_key_env | string) }}" }
-        - { option: "repo1-s3-bucket", value: "{{ s3_bucket }}" }
-        - { option: "repo1-retention-full", value: "{{ retention_full | string }}" }
-        - { option: "repo1-retention-full-type", value: "{{ retention_full_type | string }}" }
-        - { option: "repo1-bundle", value: "y" }
-        - { option: "repo1-block", value: "y" }
-        - { option: "start-fast", value: "y" }
-        - { option: "stop-auto", value: "y" }
-        - { option: "link-all", value: "y" }
-        - { option: "resume", value: "n" }
-        - { option: "archive-async", value: "y" }
-        - { option: "archive-get-queue-max", value: "1GiB" }
-        - { option: "spool-path", value: "/var/spool/pgbackrest" }
+        - option: "log-level-file"
+          value: "detail"
+        - option: "log-path"
+          value: "/var/log/pgbackrest"
+        - option: "repo1-type"
+          value: "s3"
+        - option: "repo1-path"
+          value: "{{ repo_path }}"
+        - option: "repo1-s3-key"
+          value: "{{ lookup('ansible.builtin.env', s3_access_key_env | string) }}"
+        - option: "repo1-s3-key-secret"
+          value: "{{ lookup('ansible.builtin.env', s3_secret_key_env | string) }}"
+        - option: "repo1-s3-bucket"
+          value: "{{ s3_bucket }}"
+        - option: "repo1-retention-full"
+          value: "{{ retention_full | string }}"
+        - option: "repo1-retention-full-type"
+          value: "{{ retention_full_type | string }}"
+        - option: "repo1-bundle"
+          value: "y"
+        - option: "repo1-block"
+          value: "y"
+        - option: "start-fast"
+          value: "y"
+        - option: "stop-auto"
+          value: "y"
+        - option: "link-all"
+          value: "y"
+        - option: "resume"
+          value: "n"
+        - option: "archive-async"
+          value: "y"
+        - option: "archive-get-queue-max"
+          value: "1GiB"
+        - option: "spool-path"
+          value: "/var/spool/pgbackrest"
       stanza:
-        - { option: "process-max", value: "4" }
-        - { option: "log-level-console", value: "info" }
-        - { option: "recovery-option", value: "recovery_target_action=promote" }
+        - option: "process-max"
+          value: "4"
+        - option: "log-level-console"
+          value: "info"
+        - option: "recovery-option"
+          value: "recovery_target_action=promote"
   no_log: true
   when: _hyops_pgbackrest_backend == 's3'
 
@@ -274,27 +303,47 @@
   ansible.builtin.set_fact:
     pgbackrest_conf:
       global:
-        - { option: "log-level-file", value: "detail" }
-        - { option: "log-path", value: "/var/log/pgbackrest" }
-        - { option: "repo1-type", value: "gcs" }
-        - { option: "repo1-path", value: "{{ repo_path }}" }
-        - { option: "repo1-gcs-key", value: "{{ gcs_sa_dest }}" }
-        - { option: "repo1-gcs-bucket", value: "{{ gcs_bucket }}" }
-        - { option: "repo1-retention-full", value: "{{ retention_full | string }}" }
-        - { option: "repo1-retention-full-type", value: "{{ retention_full_type | string }}" }
-        - { option: "repo1-bundle", value: "y" }
-        - { option: "repo1-block", value: "y" }
-        - { option: "start-fast", value: "y" }
-        - { option: "stop-auto", value: "y" }
-        - { option: "link-all", value: "y" }
-        - { option: "resume", value: "n" }
-        - { option: "archive-async", value: "y" }
-        - { option: "archive-get-queue-max", value: "1GiB" }
-        - { option: "spool-path", value: "/var/spool/pgbackrest" }
+        - option: "log-level-file"
+          value: "detail"
+        - option: "log-path"
+          value: "/var/log/pgbackrest"
+        - option: "repo1-type"
+          value: "gcs"
+        - option: "repo1-path"
+          value: "{{ repo_path }}"
+        - option: "repo1-gcs-key"
+          value: "{{ gcs_sa_dest }}"
+        - option: "repo1-gcs-bucket"
+          value: "{{ gcs_bucket }}"
+        - option: "repo1-retention-full"
+          value: "{{ retention_full | string }}"
+        - option: "repo1-retention-full-type"
+          value: "{{ retention_full_type | string }}"
+        - option: "repo1-bundle"
+          value: "y"
+        - option: "repo1-block"
+          value: "y"
+        - option: "start-fast"
+          value: "y"
+        - option: "stop-auto"
+          value: "y"
+        - option: "link-all"
+          value: "y"
+        - option: "resume"
+          value: "n"
+        - option: "archive-async"
+          value: "y"
+        - option: "archive-get-queue-max"
+          value: "1GiB"
+        - option: "spool-path"
+          value: "/var/spool/pgbackrest"
       stanza:
-        - { option: "process-max", value: "4" }
-        - { option: "log-level-console", value: "info" }
-        - { option: "recovery-option", value: "recovery_target_action=promote" }
+        - option: "process-max"
+          value: "4"
+        - option: "log-level-console"
+          value: "info"
+        - option: "recovery-option"
+          value: "recovery_target_action=promote"
   no_log: true
   when: _hyops_pgbackrest_backend == 'gcs'
 
@@ -302,28 +351,49 @@
   ansible.builtin.set_fact:
     pgbackrest_conf:
       global:
-        - { option: "log-level-file", value: "detail" }
-        - { option: "log-path", value: "/var/log/pgbackrest" }
-        - { option: "repo1-type", value: "azure" }
-        - { option: "repo1-path", value: "{{ repo_path }}" }
-        - { option: "repo1-azure-account", value: "{{ azure_storage_account }}" }
-        - { option: "repo1-azure-key", value: "{{ lookup('ansible.builtin.env', azure_account_key_env | string) }}" }
-        - { option: "repo1-azure-container", value: "{{ azure_container }}" }
-        - { option: "repo1-retention-full", value: "{{ retention_full | string }}" }
-        - { option: "repo1-retention-full-type", value: "{{ retention_full_type | string }}" }
-        - { option: "repo1-bundle", value: "y" }
-        - { option: "repo1-block", value: "y" }
-        - { option: "start-fast", value: "y" }
-        - { option: "stop-auto", value: "y" }
-        - { option: "link-all", value: "y" }
-        - { option: "resume", value: "n" }
-        - { option: "archive-async", value: "y" }
-        - { option: "archive-get-queue-max", value: "1GiB" }
-        - { option: "spool-path", value: "/var/spool/pgbackrest" }
+        - option: "log-level-file"
+          value: "detail"
+        - option: "log-path"
+          value: "/var/log/pgbackrest"
+        - option: "repo1-type"
+          value: "azure"
+        - option: "repo1-path"
+          value: "{{ repo_path }}"
+        - option: "repo1-azure-account"
+          value: "{{ azure_storage_account }}"
+        - option: "repo1-azure-key"
+          value: "{{ lookup('ansible.builtin.env', azure_account_key_env | string) }}"
+        - option: "repo1-azure-container"
+          value: "{{ azure_container }}"
+        - option: "repo1-retention-full"
+          value: "{{ retention_full | string }}"
+        - option: "repo1-retention-full-type"
+          value: "{{ retention_full_type | string }}"
+        - option: "repo1-bundle"
+          value: "y"
+        - option: "repo1-block"
+          value: "y"
+        - option: "start-fast"
+          value: "y"
+        - option: "stop-auto"
+          value: "y"
+        - option: "link-all"
+          value: "y"
+        - option: "resume"
+          value: "n"
+        - option: "archive-async"
+          value: "y"
+        - option: "archive-get-queue-max"
+          value: "1GiB"
+        - option: "spool-path"
+          value: "/var/spool/pgbackrest"
       stanza:
-        - { option: "process-max", value: "4" }
-        - { option: "log-level-console", value: "info" }
-        - { option: "recovery-option", value: "recovery_target_action=promote" }
+        - option: "process-max"
+          value: "4"
+        - option: "log-level-console"
+          value: "info"
+        - option: "recovery-option"
+          value: "recovery_target_action=promote"
   no_log: true
   when: _hyops_pgbackrest_backend == 'azure'
 
@@ -377,8 +447,14 @@
           'global': pgbackrest_conf.global + [
             { 'option': 'repo2-type', 'value': 's3' },
             { 'option': 'repo2-path', 'value': (_hyops_pgbackrest_secondary_repo_path | string) },
-            { 'option': 'repo2-s3-key', 'value': (lookup('ansible.builtin.env', secondary_s3_access_key_env | string)) },
-            { 'option': 'repo2-s3-key-secret', 'value': (lookup('ansible.builtin.env', secondary_s3_secret_key_env | string)) },
+            {
+              'option': 'repo2-s3-key',
+              'value': (lookup('ansible.builtin.env', secondary_s3_access_key_env | string))
+            },
+            {
+              'option': 'repo2-s3-key-secret',
+              'value': (lookup('ansible.builtin.env', secondary_s3_secret_key_env | string))
+            },
             { 'option': 'repo2-s3-bucket', 'value': (secondary_s3_bucket | string) },
             { 'option': 'repo2-retention-full', 'value': (retention_full | string) },
             { 'option': 'repo2-retention-full-type', 'value': (retention_full_type | string) },
@@ -471,7 +547,10 @@
             { 'option': 'repo2-type', 'value': 'azure' },
             { 'option': 'repo2-path', 'value': (_hyops_pgbackrest_secondary_repo_path | string) },
             { 'option': 'repo2-azure-account', 'value': (secondary_azure_storage_account | string) },
-            { 'option': 'repo2-azure-key', 'value': (lookup('ansible.builtin.env', secondary_azure_account_key_env | string)) },
+            {
+              'option': 'repo2-azure-key',
+              'value': (lookup('ansible.builtin.env', secondary_azure_account_key_env | string))
+            },
             { 'option': 'repo2-azure-container', 'value': (secondary_azure_container | string) },
             { 'option': 'repo2-retention-full', 'value': (retention_full | string) },
             { 'option': 'repo2-retention-full-type', 'value': (retention_full_type | string) },
