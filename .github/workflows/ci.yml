@@ -47,10 +47,13 @@ jobs:
         run: |
           if [ "${GITHUB_EVENT_NAME}" = "pull_request" ]; then
             BASE_SHA="${{ github.event.pull_request.base.sha }}"
-            pre-commit run --from-ref "${BASE_SHA}" --to-ref HEAD
           else
-            pre-commit run --all-files
+            BASE_SHA="${{ github.event.before }}"
           fi
+          if [ -z "${BASE_SHA}" ] || printf '%s' "${BASE_SHA}" | grep -Eq '^0+$'; then
+            BASE_SHA="$(git rev-list --max-parents=0 HEAD | tail -n1)"
+          fi
+          pre-commit run --from-ref "${BASE_SHA}" --to-ref HEAD
 
       - name: Run ansible-lint on changed Ansible files
         shell: bash
