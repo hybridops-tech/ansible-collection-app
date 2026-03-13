@@ -10,7 +10,7 @@ Deploy a Jenkins controller on a Linux control node using Docker Compose v2, wit
 - Optionally manages a Jenkins admin API token for automation.
 - Optionally seeds a minimal bootstrap credential set via JCasC (disabled by default).
 
-Design context: [ADR-0603 – Run Jenkins controller on control node, agents on RKE2](https://docs.hybridops.studio/adr/ADR-0603-jenkins-controller-docker-agents-rke2/).
+Design context: [ADR-0603 – Run Jenkins controller on control node, agents on RKE2](https://docs.hybridops.tech/adr/ADR-0603-jenkins-controller-docker-agents-rke2/).
 
 ## Requirements
 
@@ -146,11 +146,11 @@ None declared in `meta/main.yml`. Docker Engine and Docker Compose v2 must be in
 
 ## Project context
 
-HybridOps.Studio platform automation reference implementation: [docs.hybridops.studio](https://docs.hybridops.studio/).
+HybridOps platform automation reference implementation: [docs.hybridops.tech](https://docs.hybridops.tech/).
 
 ## License
 
 - Code: [MIT-0](https://spdx.org/licenses/MIT-0.html)
 - Documentation & diagrams: [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/)
 
-HybridOps.Studio licensing and trademark notes: [Licensing](https://docs.hybridops.studio/briefings/legal/licensing/).
+HybridOps licensing and trademark notes: [Licensing](https://docs.hybridops.tech/briefings/legal/licensing/).

@@ -9,6 +9,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - No unreleased changes yet.
 
+## [0.1.1] - 2026-03-10
+
+### Changed
+
+- Normalized YAML in the active `pgbackrest_repo` and `netbox_service` task paths for clean Galaxy release linting.
+- Updated repository links to the `hybridops-tech` namespace.
+
 ## [0.1.0] - 2026-01-02
 
 ### Added
@@ -30,5 +37,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Role-local `tests/` harnesses and optional Molecule scenarios for selected roles.
 - `galaxy.yml` metadata for namespace `hybridops` and collection name `app`.
 
-[Unreleased]: https://github.com/hybridops-studio/ansible-collection-app/compare/v0.1.0-app...HEAD
-[0.1.0]: https://github.com/hybridops-studio/ansible-collection-app/releases/tag/v0.1.0-app
+[Unreleased]: https://github.com/hybridops-tech/ansible-collection-app/compare/v0.1.1...HEAD
+[0.1.1]: https://github.com/hybridops-tech/ansible-collection-app/compare/v0.1.0...v0.1.1
+[0.1.0]: https://github.com/hybridops-tech/ansible-collection-app/releases/tag/v0.1.0

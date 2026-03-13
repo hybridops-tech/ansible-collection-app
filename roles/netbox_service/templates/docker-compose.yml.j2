@@ -1,6 +1,6 @@
 # purpose: NetBox docker-compose stack (web + worker + housekeeping + redis)
 # adr: ADR-0002, ADR-0501, ADR-0502
-# maintainer: HybridOps.Studio
+# maintainer: HybridOps.Tech
 
 services:
   redis:
@@ -15,8 +15,6 @@ services:
     env_file:
       - ./netbox.env
     environment:
-      ALLOWED_HOSTS: "{{ netbox_allowed_hosts | join(' ') }}"
-      BASE_PATH: "{{ netbox_base_url }}"
       NETBOX_CONFIGURATION: "netbox.configuration"
     volumes:
       - "{{ netbox_install_root }}/config/configuration.py:/opt/netbox/netbox/netbox/configuration.py:ro"

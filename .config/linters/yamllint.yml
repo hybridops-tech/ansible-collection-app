@@ -1,0 +1,33 @@
+# purpose: Yamllint configuration for HybridOps Ansible collections.
+# adr: ADR-0606-ansible-collections-release-process
+# maintainer: HybridOps.Studio
+
+extends: default
+
+ignore: |
+  **/.venv/**
+  **/.tox/**
+  **/dist/**
+  **/build/**
+  **/output/**
+  **/tests/output/**
+
+rules:
+  document-start: disable
+  comments-indentation: disable
+
+  truthy:
+    check-keys: false
+    allowed-values: ["true", "false"]
+
+  line-length:
+    max: 120
+    allow-non-breakable-words: true
+    allow-non-breakable-inline-mappings: true
+
+  comments:
+    min-spaces-from-content: 1
+
+  indentation:
+    spaces: 2
+    indent-sequences: true

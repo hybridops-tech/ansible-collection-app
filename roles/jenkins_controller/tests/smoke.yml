@@ -9,9 +9,6 @@
   become: true
   gather_facts: true
 
-  collections:
-  - hybridops.app
-
   vars:
     jenkins_home_path: "/opt/jenkins"
     jenkins_external_http_port: 8080
@@ -25,7 +22,7 @@
     # The role fail fast if this is empty.
 
   roles:
-  - role: jenkins_controller
+    - role: hybridops.app.jenkins_controller
   # Example of full composition when consuming from Galaxy or platform playbooks:
   #
   # - name: Deploy Jenkins controller (composed)

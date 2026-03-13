@@ -1,6 +1,6 @@
 # purpose: NetBox configuration override
 # adr: ADR-0002, ADR-0501, ADR-0502
-# maintainer: HybridOps.Studio
+# maintainer: HybridOps.Tech
 
 import os
 
@@ -12,7 +12,9 @@ def _env(name: str, default: str = "") -> str:
 _raw_hosts = _env("ALLOWED_HOSTS", "")
 ALLOWED_HOSTS = [h for h in _raw_hosts.split() if h]
 
-BASE_PATH = _env("BASE_PATH", "/") or "/"
+# NetBox expects BASE_PATH without a trailing slash (or empty for root).
+_raw_base_path = _env("BASE_PATH", "")
+BASE_PATH = "/" + _raw_base_path.strip("/") if _raw_base_path.strip("/") else ""
 
 DATABASE = {
     "NAME": _env("DB_NAME", "netbox"),

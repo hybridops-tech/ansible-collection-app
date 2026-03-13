@@ -20,93 +20,105 @@
 - name: "Check mode: skip agent bootstrap when secret is not provided"
   ansible.builtin.debug:
     msg: >-
-      Check mode: skipping Jenkins agent bootstrap because jenkins_agents_docker_agent_secret is not set. Provide jenkins_agents_docker_agent_secret for --check runs, or run without --check to allow JNLP retrieval.
+      Check mode: skipping Jenkins agent bootstrap because
+      jenkins_agents_docker_agent_secret is not set. Provide
+      jenkins_agents_docker_agent_secret for --check runs, or run without
+      --check to allow JNLP retrieval.
   when:
-  - ansible_check_mode
-  - (jenkins_agents_docker_agent_secret | default('') | string | trim | length) == 0
+    - ansible_check_mode
+    - (jenkins_agents_docker_agent_secret | default('') | string | trim | length) == 0
   changed_when: false
 
 - name: "Check mode: end host when agent secret is not provided"
   ansible.builtin.meta: end_host
   when:
-  - ansible_check_mode
-  - (jenkins_agents_docker_agent_secret | default('') | string | trim | length) == 0
+    - ansible_check_mode
+    - (jenkins_agents_docker_agent_secret | default('') | string | trim | length) == 0
 
 - name: Assert inputs are sufficient
   ansible.builtin.assert:
     that:
-    - >-
-      (jenkins_agents_docker_agent_secret | default('') | string | trim | length) > 0 or ((_jenkins_auth_password | default('') | string | trim | length) > 0)
+      - >-
+        (jenkins_agents_docker_agent_secret | default('') | string | trim | length) > 0
+        or ((_jenkins_auth_password | default('') | string | trim | length) > 0)
     fail_msg: >-
-      Agent secret is empty. Provide jenkins_agents_docker_agent_secret, or provide Jenkins admin auth (jenkins_admin_api_token preferred, else jenkins_admin_password) so the role can fetch the secret from /computer/<name>/slave-agent.jnlp.
+      Agent secret is empty. Provide jenkins_agents_docker_agent_secret, or
+      provide Jenkins admin auth (jenkins_admin_api_token preferred, else
+      jenkins_admin_password) so the role can fetch the secret from
+      /computer/<name>/slave-agent.jnlp.
   no_log: true
   changed_when: false
 
 - name: Fetch agent secret from JNLP when not supplied
   when:
-  - not ansible_check_mode
-  - (jenkins_agents_docker_agent_secret | default('') | string | trim | length) == 0
+    - not ansible_check_mode
+    - (jenkins_agents_docker_agent_secret | default('') | string | trim | length) == 0
   block:
-  - name: Validate Jenkins authentication (host-local API)
-    ansible.builtin.uri:
-      url: "{{ jenkins_agents_docker_api_url }}/whoAmI/api/json"
-      method: GET
-      url_username: "{{ jenkins_admin_username }}"
-      url_password: "{{ _jenkins_auth_password }}"
-      force_basic_auth: true
-      status_code: [ 200, 401, 403 ]
-      return_content: true
-    register: _whoami
-    failed_when: false
-    no_log: true
-    changed_when: false
+    - name: Validate Jenkins authentication (host-local API)
+      ansible.builtin.uri:
+        url: "{{ jenkins_agents_docker_api_url }}/whoAmI/api/json"
+        method: GET
+        url_username: "{{ jenkins_admin_username }}"
+        url_password: "{{ _jenkins_auth_password }}"
+        force_basic_auth: true
+        status_code: [200, 401, 403]
+        return_content: true
+      register: _whoami
+      failed_when: false
+      no_log: true
+      changed_when: false
 
-  - name: Fail when Jenkins authentication is invalid
-    ansible.builtin.assert:
-      that:
-      - (_whoami.status | default(0)) == 200
-      - (_whoami.json.authenticated | default(false)) | bool
-      - (_whoami.json.name | default('')) == jenkins_admin_username
-      fail_msg: >-
-        Jenkins auth failed at {{ jenkins_agents_docker_api_url }}. Provide a valid jenkins_admin_api_token or jenkins_admin_password.
-    no_log: false
+    - name: Fail when Jenkins authentication is invalid
+      ansible.builtin.assert:
+        that:
+          - (_whoami.status | default(0)) == 200
+          - (_whoami.json.authenticated | default(false)) | bool
+          - (_whoami.json.name | default('')) == jenkins_admin_username
+        fail_msg: >-
+          Jenkins auth failed at {{ jenkins_agents_docker_api_url }}. Provide a
+          valid jenkins_admin_api_token or jenkins_admin_password.
+      no_log: false
 
-  - name: Fetch node JNLP
-    ansible.builtin.uri:
-      url: "{{ jenkins_agents_docker_api_url }}/computer/{{ jenkins_agents_docker_agent_name }}/slave-agent.jnlp"
-      method: GET
-      url_username: "{{ jenkins_admin_username }}"
-      url_password: "{{ _jenkins_auth_password }}"
-      force_basic_auth: true
-      status_code: [ 200, 404 ]
-      return_content: true
-    register: _jnlp
-    failed_when: false
-    no_log: true
-    changed_when: false
+    - name: Fetch node JNLP
+      ansible.builtin.uri:
+        url: "{{ jenkins_agents_docker_api_url }}/computer/{{ jenkins_agents_docker_agent_name }}/slave-agent.jnlp"
+        method: GET
+        url_username: "{{ jenkins_admin_username }}"
+        url_password: "{{ _jenkins_auth_password }}"
+        force_basic_auth: true
+        status_code: [200, 404]
+        return_content: true
+      register: _jnlp
+      failed_when: false
+      no_log: true
+      changed_when: false
 
-  - name: Fail when node JNLP is not available
-    ansible.builtin.assert:
-      that:
-      - (_jnlp.status | default(0)) == 200
-      fail_msg: >-
-        Jenkins node '{{ jenkins_agents_docker_agent_name }}' was not found (HTTP={{ _jnlp.status | default('n/a') }}). Define the node via controller JCasC (recommended) or provide jenkins_agents_docker_agent_secret.
-    no_log: false
+    - name: Fail when node JNLP is not available
+      ansible.builtin.assert:
+        that:
+          - (_jnlp.status | default(0)) == 200
+        fail_msg: >-
+          Jenkins node '{{ jenkins_agents_docker_agent_name }}' was not found
+          (HTTP={{ _jnlp.status | default('n/a') }}). Define the node via
+          controller JCasC (recommended) or provide
+          jenkins_agents_docker_agent_secret.
+      no_log: false
 
-  - name: Set agent secret from JNLP
-    ansible.builtin.set_fact:
-      jenkins_agents_docker_agent_secret: >-
-        {{ (_jnlp.content | regex_findall('<argument>([^<]+)</argument>'))[0] | default('') }}
-    no_log: true
-    changed_when: false
+    - name: Set agent secret from JNLP
+      ansible.builtin.set_fact:
+        jenkins_agents_docker_agent_secret: >-
+          {{ (_jnlp.content | regex_findall('<argument>([^<]+)</argument>'))[0] | default('') }}
+      no_log: true
+      changed_when: false
 
-  - name: Fail when secret could not be extracted
-    ansible.builtin.assert:
-      that:
-      - (jenkins_agents_docker_agent_secret | default('') | string | trim | length) > 0
-      fail_msg: >-
-        Failed to extract agent secret from JNLP. Ensure Jenkins returned a valid JNLP payload for this node.
-    no_log: false
+    - name: Fail when secret could not be extracted
+      ansible.builtin.assert:
+        that:
+          - (jenkins_agents_docker_agent_secret | default('') | string | trim | length) > 0
+        fail_msg: >-
+          Failed to extract agent secret from JNLP. Ensure Jenkins returned a
+          valid JNLP payload for this node.
+      no_log: false
 
 - name: Ensure Docker network exists (controller network)
   community.docker.docker_network:
@@ -120,8 +132,8 @@
   changed_when: false
   failed_when: false
   when:
-  - not ansible_check_mode
-  - jenkins_agents_docker_mount_docker_socket | bool
+    - not ansible_check_mode
+    - jenkins_agents_docker_mount_docker_socket | bool
 
 - name: Ensure inbound agent container is running
   community.docker.docker_container:
@@ -130,17 +142,20 @@
     state: started
     restart_policy: unless-stopped
     networks:
-    - name: "{{ jenkins_network_name | default('jenkins') }}"
+      - name: "{{ jenkins_network_name | default('jenkins') }}"
     env:
       JENKINS_URL: "{{ jenkins_agents_docker_jenkins_url }}/"
       JENKINS_AGENT_NAME: "{{ jenkins_agents_docker_agent_name }}"
       JENKINS_SECRET: "{{ jenkins_agents_docker_agent_secret }}"
       JENKINS_TUNNEL: "{{ jenkins_agents_docker_jenkins_tunnel }}"
-      JENKINS_WEB_SOCKET: "{{ (jenkins_agents_docker_use_websocket | bool) | ternary('true','false') }}"
+      JENKINS_WEB_SOCKET: "{{ (jenkins_agents_docker_use_websocket | bool) | ternary('true', 'false') }}"
       AGENT_WORKDIR: "{{ jenkins_agents_docker_agent_workdir }}"
     groups: >-
       {{
-        (jenkins_agents_docker_mount_docker_socket | bool and (jenkins_agents_docker_socket_gid.stdout | default('') | length > 0))
+        (
+          jenkins_agents_docker_mount_docker_socket | bool
+          and (jenkins_agents_docker_socket_gid.stdout | default('') | length > 0)
+        )
         | ternary([jenkins_agents_docker_socket_gid.stdout], omit)
       }}
     volumes: >-

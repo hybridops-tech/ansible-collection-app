@@ -1,6 +1,7 @@
+---
 # purpose: Deploy NetBox via Docker Compose
 # adr: ADR-0002, ADR-0501, ADR-0502
-# maintainer: HybridOps.Studio
+# maintainer: HybridOps.Tech
 
 - name: Validate inputs
   ansible.builtin.include_tasks: validate.yml
@@ -26,14 +27,25 @@
     group: root
     mode: "0755"
   loop:
-  - "{{ netbox_install_root }}"
-  - "{{ netbox_install_root }}/compose"
-  - "{{ netbox_install_root }}/config"
-  - "{{ netbox_data_root }}"
-  - "{{ netbox_data_root }}/media"
-  - "{{ netbox_data_root }}/reports"
-  - "{{ netbox_data_root }}/scripts"
-  - "{{ netbox_data_root }}/redis"
+    - "{{ netbox_install_root }}"
+    - "{{ netbox_install_root }}/compose"
+    - "{{ netbox_install_root }}/config"
+    - "{{ netbox_data_root }}"
+    - "{{ netbox_data_root }}/media"
+    - "{{ netbox_data_root }}/reports"
+    - "{{ netbox_data_root }}/scripts"
+    - "{{ netbox_data_root }}/redis"
+  when: not netbox_smoke_only | bool
+
+- name: Ensure Redis data directory permissions for container writes
+  ansible.builtin.file:
+    path: "{{ netbox_data_root }}/redis"
+    state: directory
+    owner: "{{ netbox_redis_data_owner }}"
+    group: "{{ netbox_redis_data_group }}"
+    mode: "{{ netbox_redis_data_mode }}"
+    recurse: true
+  notify: Restart NetBox
   when: not netbox_smoke_only | bool
 
 - name: Render docker-compose.yml
@@ -68,30 +80,47 @@
 
 - name: Pull images
   ansible.builtin.command:
-    cmd: docker compose --project-name "{{ netbox_compose_project }}" --env-file "{{ netbox_install_root }}/compose/netbox.env" -f "{{ netbox_install_root }}/compose/docker-compose.yml" pull
+    cmd: >-
+      docker compose
+      --project-name "{{ netbox_compose_project }}"
+      --env-file "{{ netbox_install_root }}/compose/netbox.env"
+      -f "{{ netbox_install_root }}/compose/docker-compose.yml"
+      pull
     chdir: "{{ netbox_install_root }}/compose"
   changed_when: false
   when:
-  - netbox_compose_pull | bool
-  - not netbox_smoke_only | bool
+    - netbox_compose_pull | bool
+    - not netbox_smoke_only | bool
 
 - name: Ensure NetBox stack is running
   ansible.builtin.command:
-    cmd: docker compose --project-name "{{ netbox_compose_project }}" --env-file "{{ netbox_install_root }}/compose/netbox.env" -f "{{ netbox_install_root }}/compose/docker-compose.yml" up -d
+    cmd: >-
+      docker compose
+      --project-name "{{ netbox_compose_project }}"
+      --env-file "{{ netbox_install_root }}/compose/netbox.env"
+      -f "{{ netbox_install_root }}/compose/docker-compose.yml"
+      up -d
     chdir: "{{ netbox_install_root }}/compose"
   changed_when: true
   when:
-  - netbox_service_enabled | bool
-  - not netbox_smoke_only | bool
+    - netbox_service_enabled | bool
+    - not netbox_smoke_only | bool
 
 - name: Wait for NetBox readiness
   ansible.builtin.include_tasks: readiness.yml
   when:
-  - netbox_readiness_enabled | bool
-  - not netbox_smoke_only | bool
+    - netbox_readiness_enabled | bool
+    - not netbox_smoke_only | bool
 
 - name: Optionally bootstrap NetBox superuser
   ansible.builtin.include_tasks: bootstrap_superuser.yml
   when:
-  - (netbox_superuser_password | length) > 0
-  - not netbox_smoke_only | bool
+    - (netbox_superuser_password | length) > 0
+    - not netbox_smoke_only | bool
+
+- name: Optionally bootstrap NetBox API token
+  ansible.builtin.include_tasks: bootstrap_api_token.yml
+  when:
+    - (netbox_api_token_key | length) > 0
+    - (netbox_superuser_password | length) > 0
+    - not netbox_smoke_only | bool
