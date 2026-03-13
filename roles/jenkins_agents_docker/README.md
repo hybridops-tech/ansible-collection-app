@@ -2,7 +2,7 @@
 
 Configures a **bootstrap Jenkins inbound agent** that runs as a Docker container on the controller host (for example `ctrl-01`).
 
-This role supports the **bootstrap / transition phase** where the Jenkins controller is already deployed (via `jenkins_controller`), but the primary execution runtime (RKE2 pod agents) is not yet available. In steady state, agents are expected to run on RKE2 using `jenkins_agents_rke2`, aligned with the execution model in [ADR-0603 – Run Jenkins controller on control node, agents on RKE2](https://docs.hybridops.studio/adr/ADR-0603-jenkins-controller-docker-agents-rke2/).
+This role supports the **bootstrap / transition phase** where the Jenkins controller is already deployed (via `jenkins_controller`), but the primary execution runtime (RKE2 pod agents) is not yet available. In steady state, agents are expected to run on RKE2 using `jenkins_agents_rke2`, aligned with the execution model in [ADR-0603 – Run Jenkins controller on control node, agents on RKE2](https://docs.hybridops.tech/adr/ADR-0603-jenkins-controller-docker-agents-rke2/).
 
 ---
 
@@ -154,7 +154,7 @@ curl -g -sS -u "admin:${TOKEN}"   "http://localhost:8080/computer/api/json?tree=
 pipeline {
   agent { label 'ctrl-docker' }
   stages {
-    stage('proof') {
+    stage('smoke') {
       steps {
         sh 'whoami && uname -a && terraform version | head -n 1'
       }
@@ -187,11 +187,10 @@ pipeline {
 
 ## Related references
 
-- [ADR-0603 – Run Jenkins controller on control node, agents on RKE2](https://docs.hybridops.studio/adr/ADR-0603-jenkins-controller-docker-agents-rke2/)  
-- [ADR-0607 – Adopt CI agent tools image for Jenkins agents](https://docs.hybridops.studio/adr/ADR-0607-adopt-ci-agent-tools-image-for-jenkins-agents/)  
-- [Runbooks](https://docs.hybridops.studio/ops/runbooks/)  
+- [ADR-0603 – Run Jenkins controller on control node, agents on RKE2](https://docs.hybridops.tech/adr/ADR-0603-jenkins-controller-docker-agents-rke2/)  
+- [ADR-0607 – Adopt CI agent tools image for Jenkins agents](https://docs.hybridops.tech/adr/ADR-0607-adopt-ci-agent-tools-image-for-jenkins-agents/)  
+- [Runbooks](https://docs.hybridops.tech/ops/runbooks/)  
 
 ---
 
-**Maintainer:** HybridOps.Studio  
-**License:** See the [HybridOps.Studio licensing overview](https://docs.hybridops.studio/briefings/legal/licensing/) for project-wide licence details.
+**License:** See the [HybridOps licensing overview](https://docs.hybridops.tech/briefings/legal/licensing/) for project-wide licence details.
