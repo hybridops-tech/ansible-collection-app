@@ -33,17 +33,17 @@
     src: "{{ jenkins_admin_api_token_file }}"
   register: jenkins_api_token_file
   when:
-  - (jenkins_admin_api_token_value is not defined) or (jenkins_admin_api_token_value | string | trim | length) == 0
-  - jenkins_api_token_stat.stat.exists | bool
+    - (jenkins_admin_api_token_value is not defined) or (jenkins_admin_api_token_value | string | trim | length) == 0
+    - jenkins_api_token_stat.stat.exists | bool
   no_log: true
 
 - name: Set token fact from disk content
   ansible.builtin.set_fact:
     jenkins_admin_api_token_value: "{{ (jenkins_api_token_file.content | b64decode) | trim }}"
   when:
-  - jenkins_api_token_file is defined
-  - jenkins_api_token_file.content is defined
-  - (jenkins_api_token_file.content | string | length) > 0
+    - jenkins_api_token_file is defined
+    - jenkins_api_token_file.content is defined
+    - (jenkins_api_token_file.content | string | length) > 0
   no_log: true
   changed_when: false
 
@@ -65,10 +65,10 @@
     owner: "root"
     group: "root"
   when:
-  - not (jenkins_need_mint | bool)
-  - not (jenkins_api_token_stat.stat.exists | bool)
-  - jenkins_admin_api_token_value is defined
-  - (jenkins_admin_api_token_value | string | trim | length) > 0
+    - not (jenkins_need_mint | bool)
+    - not (jenkins_api_token_stat.stat.exists | bool)
+    - jenkins_admin_api_token_value is defined
+    - (jenkins_admin_api_token_value | string | trim | length) > 0
   no_log: true
 
 - name: Report token location when already available (non-secret)
@@ -82,167 +82,179 @@
   when: not (jenkins_need_mint | bool)
 
 - name: Mint Jenkins admin API token (host-local)
-  block:
-  - name: Wait for Jenkins to be reachable (host-local)
-    ansible.builtin.uri: &jenkins_uri_common
-      url: "{{ jenkins_controller_api_url }}/login"
-      method: GET
-      follow_redirects: all
-      status_code: [ 200, 302, 403 ]
-      return_content: false
-    register: jenkins_login_check
-    retries: 30
-    delay: 5
-    until: (jenkins_login_check.status | int) in [200, 302, 403]
-    changed_when: false
-
-  - name: Validate Jenkins admin credentials (host-local)
-    ansible.builtin.uri: &jenkins_uri_auth
-      url: "{{ jenkins_controller_api_url }}/whoAmI/api/json"
-      method: GET
-      follow_redirects: all
-      force_basic_auth: true
-      user: "{{ jenkins_admin_username }}"
-      password: "{{ jenkins_admin_password }}"
-      status_code: [ 200, 401, 403 ]
-      return_content: true
-    register: jenkins_whoami
-    failed_when: false
-    no_log: true
-    changed_when: false
-
-  - name: Fail when Jenkins authentication is invalid
-    ansible.builtin.assert:
-      that:
-      - (jenkins_whoami.status | default(0)) == 200
-      - (jenkins_whoami.json.authenticated | default(false)) | bool
-      fail_msg: >-
-        Jenkins admin auth failed for token minting at {{ jenkins_controller_api_url }}. Provide correct jenkins_admin_username/password (or configure a realm that permits token minting).
-    no_log: false
-
-  - name: Warn when Jenkins whoAmI user does not match requested username
-    ansible.builtin.debug:
-      msg: >-
-        Jenkins authenticated as '{{ jenkins_whoami.json.name | default('') }}' while jenkins_admin_username='{{ jenkins_admin_username }}'. This can be normal with non-local security realms.
-    when:
-    - (jenkins_whoami.status | default(0)) == 200
-    - (jenkins_whoami.json.authenticated | default(false)) | bool
-    - (jenkins_whoami.json.name | default('') | string | trim) != (jenkins_admin_username | string | trim)
-    changed_when: false
-
-  - name: Get CSRF crumb (host-local)
-    ansible.builtin.uri:
-      <<: *jenkins_uri_auth
-      url: "{{ jenkins_controller_api_url }}/crumbIssuer/api/json"
-      method: GET
-      status_code: [ 200, 404, 401, 403 ]
-    register: jenkins_crumb
-    failed_when: false
-    no_log: true
-    changed_when: false
-
-  - name: Determine whether crumb is enabled
-    ansible.builtin.set_fact:
-      jenkins_crumb_enabled: "{{ (jenkins_crumb.status | default(0) | int) == 200 }}"
-    changed_when: false
-
-  - name: Fail when crumb issuer is present but invalid
-    ansible.builtin.assert:
-      that:
-      - jenkins_crumb.json is defined
-      - (jenkins_crumb.json.crumb | default('') | string | length) > 0
-      - (jenkins_crumb.json.crumbRequestField | default('') | string | length) > 0
-      fail_msg: "Crumb issuer returned HTTP=200 but the payload is missing crumb fields."
-    when: jenkins_crumb_enabled | bool
-    no_log: false
-
-  - name: Build headers for token mint request
-    ansible.builtin.set_fact:
-      jenkins_token_headers: >-
-        {{
-          {'Content-Type': 'application/x-www-form-urlencoded'}
-          | combine(
-              (jenkins_crumb_enabled | bool)
-              | ternary({ (jenkins_crumb.json.crumbRequestField): jenkins_crumb.json.crumb }, {})
-            )
-          | combine(
-              ((jenkins_crumb.cookies_string | default('') | trim | length) > 0)
-              | ternary({'Cookie': (jenkins_crumb.cookies_string | trim)}, {})
-            )
-        }}
-    when: jenkins_crumb_enabled | bool
-    no_log: true
-    changed_when: false
-
-  - name: Generate Jenkins admin API token (host-local)
-    ansible.builtin.uri:
-      url: "{{ jenkins_controller_api_url }}/user/{{ jenkins_admin_username }}/descriptorByName/jenkins.security.ApiTokenProperty/generateNewToken"
-      method: POST
-      follow_redirects: all
-      force_basic_auth: true
-      user: "{{ jenkins_admin_username }}"
-      password: "{{ jenkins_admin_password }}"
-      headers: >-
-        {{
-          (jenkins_crumb_enabled | bool)
-          | ternary(jenkins_token_headers, {'Content-Type': 'application/x-www-form-urlencoded'})
-        }}
-      body_format: form-urlencoded
-      body:
-        newTokenName: "{{ jenkins_admin_api_token_name }}"
-      status_code: [ 200, 400, 401, 403, 404 ]
-      return_content: true
-    register: jenkins_new_token
-    failed_when: false
-    no_log: true
-    changed_when: false
-
-  - name: Fail when token minting fails
-    ansible.builtin.assert:
-      that:
-      - (jenkins_new_token.status | default(0)) == 200
-      - jenkins_new_token.json is defined
-      - jenkins_new_token.json.data is defined
-      - (jenkins_new_token.json.data.tokenValue | default('') | string | trim | length) > 0
-      fail_msg: >-
-        Jenkins API token minting failed (HTTP={{ jenkins_new_token.status | default('n/a') }}). Response (first 200 chars)={{ (jenkins_new_token.content | default('') | regex_replace('\\s+', ' '))[:200] }}
-    no_log: false
-
-  - name: Set token value from minted response
-    ansible.builtin.set_fact:
-      jenkins_admin_api_token_value: "{{ jenkins_new_token.json.data.tokenValue | string | trim }}"
-      jenkins_token_minted_this_run: true
-    no_log: true
-    changed_when: false
-
-  - name: Persist admin API token to disk (root-only)
-    ansible.builtin.copy:
-      dest: "{{ jenkins_admin_api_token_file }}"
-      content: "{{ jenkins_admin_api_token_value }}\n"
-      mode: "0600"
-      owner: "root"
-      group: "root"
-    no_log: true
-
-  - name: Report token location (non-secret)
-    ansible.builtin.debug:
-      msg: "Jenkins admin API token stored at {{ jenkins_admin_api_token_file }} (root-only)."
-    changed_when: false
-
-  - name: Print admin API token once (explicit opt-in)
-    ansible.builtin.debug:
-      msg: |
-        Jenkins admin API token (copy now; will not be shown again):
-        {{ jenkins_admin_api_token_value }}
-    when:
-    - (jenkins_bootstrap_api_token_print_once | default(false) | bool)
-    - (jenkins_token_minted_this_run | default(false) | bool)
-
-  - name: Warn when printing secrets to stdout
-    ansible.builtin.debug:
-      msg: "WARNING: Printing secrets to stdout can leak into logs. Disable jenkins_bootstrap_api_token_print_once in CI."
-    when:
-    - (jenkins_bootstrap_api_token_print_once | default(false) | bool)
-    - (jenkins_token_minted_this_run | default(false) | bool)
-
   when: jenkins_need_mint | bool
+  block:
+    - name: Wait for Jenkins to be reachable (host-local)
+      ansible.builtin.uri: &jenkins_uri_common
+        url: "{{ jenkins_controller_api_url }}/login"
+        method: GET
+        follow_redirects: all
+        status_code: [200, 302, 403]
+        return_content: false
+      register: jenkins_login_check
+      retries: 30
+      delay: 5
+      until: (jenkins_login_check.status | int) in [200, 302, 403]
+      changed_when: false
+
+    - name: Validate Jenkins admin credentials (host-local)
+      ansible.builtin.uri: &jenkins_uri_auth
+        url: "{{ jenkins_controller_api_url }}/whoAmI/api/json"
+        method: GET
+        follow_redirects: all
+        force_basic_auth: true
+        user: "{{ jenkins_admin_username }}"
+        password: "{{ jenkins_admin_password }}"
+        status_code: [200, 401, 403]
+        return_content: true
+      register: jenkins_whoami
+      failed_when: false
+      no_log: true
+      changed_when: false
+
+    - name: Fail when Jenkins authentication is invalid
+      ansible.builtin.assert:
+        that:
+          - (jenkins_whoami.status | default(0)) == 200
+          - (jenkins_whoami.json.authenticated | default(false)) | bool
+        fail_msg: >-
+          Jenkins admin auth failed for token minting at
+          {{ jenkins_controller_api_url }}. Provide correct
+          jenkins_admin_username/password (or configure a realm that permits
+          token minting).
+      no_log: false
+
+    - name: Warn when Jenkins whoAmI user does not match requested username
+      ansible.builtin.debug:
+        msg: >-
+          Jenkins authenticated as '{{ jenkins_whoami.json.name | default('') }}'
+          while jenkins_admin_username='{{ jenkins_admin_username }}'. This can
+          be normal with non-local security realms.
+      when:
+        - (jenkins_whoami.status | default(0)) == 200
+        - (jenkins_whoami.json.authenticated | default(false)) | bool
+        - (jenkins_whoami.json.name | default('') | string | trim) != (jenkins_admin_username | string | trim)
+      changed_when: false
+
+    - name: Get CSRF crumb (host-local)
+      ansible.builtin.uri:
+        <<: *jenkins_uri_auth
+        url: "{{ jenkins_controller_api_url }}/crumbIssuer/api/json"
+        method: GET
+        status_code: [200, 404, 401, 403]
+      register: jenkins_crumb
+      failed_when: false
+      no_log: true
+      changed_when: false
+
+    - name: Determine whether crumb is enabled
+      ansible.builtin.set_fact:
+        jenkins_crumb_enabled: "{{ (jenkins_crumb.status | default(0) | int) == 200 }}"
+      changed_when: false
+
+    - name: Fail when crumb issuer is present but invalid
+      ansible.builtin.assert:
+        that:
+          - jenkins_crumb.json is defined
+          - (jenkins_crumb.json.crumb | default('') | string | length) > 0
+          - (jenkins_crumb.json.crumbRequestField | default('') | string | length) > 0
+        fail_msg: "Crumb issuer returned HTTP=200 but the payload is missing crumb fields."
+      when: jenkins_crumb_enabled | bool
+      no_log: false
+
+    - name: Build headers for token mint request
+      ansible.builtin.set_fact:
+        jenkins_token_headers: >-
+          {{
+            {'Content-Type': 'application/x-www-form-urlencoded'}
+            | combine(
+                (jenkins_crumb_enabled | bool)
+                | ternary({(jenkins_crumb.json.crumbRequestField): jenkins_crumb.json.crumb}, {})
+              )
+            | combine(
+                ((jenkins_crumb.cookies_string | default('') | trim | length) > 0)
+                | ternary({'Cookie': (jenkins_crumb.cookies_string | trim)}, {})
+              )
+          }}
+      when: jenkins_crumb_enabled | bool
+      no_log: true
+      changed_when: false
+
+    - name: Generate Jenkins admin API token (host-local)
+      ansible.builtin.uri:
+        url: >-
+          {{ jenkins_controller_api_url }}/user/{{ jenkins_admin_username
+          }}/descriptorByName/jenkins.security.ApiTokenProperty/generateNewToken
+        method: POST
+        follow_redirects: all
+        force_basic_auth: true
+        user: "{{ jenkins_admin_username }}"
+        password: "{{ jenkins_admin_password }}"
+        headers: >-
+          {{
+            (jenkins_crumb_enabled | bool)
+            | ternary(jenkins_token_headers, {'Content-Type': 'application/x-www-form-urlencoded'})
+          }}
+        body_format: form-urlencoded
+        body:
+          newTokenName: "{{ jenkins_admin_api_token_name }}"
+        status_code: [200, 400, 401, 403, 404]
+        return_content: true
+      register: jenkins_new_token
+      failed_when: false
+      no_log: true
+      changed_when: false
+
+    - name: Fail when token minting fails
+      ansible.builtin.assert:
+        that:
+          - (jenkins_new_token.status | default(0)) == 200
+          - jenkins_new_token.json is defined
+          - jenkins_new_token.json.data is defined
+          - (jenkins_new_token.json.data.tokenValue | default('') | string | trim | length) > 0
+        fail_msg: >-
+          Jenkins API token minting failed
+          (HTTP={{ jenkins_new_token.status | default('n/a') }}). Response
+          (first 200 chars)={{
+          (jenkins_new_token.content | default('') | regex_replace('\\s+', ' '))[:200]
+          }}
+      no_log: false
+
+    - name: Set token value from minted response
+      ansible.builtin.set_fact:
+        jenkins_admin_api_token_value: "{{ jenkins_new_token.json.data.tokenValue | string | trim }}"
+        jenkins_token_minted_this_run: true
+      no_log: true
+      changed_when: false
+
+    - name: Persist admin API token to disk (root-only)
+      ansible.builtin.copy:
+        dest: "{{ jenkins_admin_api_token_file }}"
+        content: "{{ jenkins_admin_api_token_value }}\n"
+        mode: "0600"
+        owner: "root"
+        group: "root"
+      no_log: true
+
+    - name: Report token location (non-secret)
+      ansible.builtin.debug:
+        msg: "Jenkins admin API token stored at {{ jenkins_admin_api_token_file }} (root-only)."
+      changed_when: false
+
+    - name: Print admin API token once (explicit opt-in)
+      ansible.builtin.debug:
+        msg: |
+          Jenkins admin API token (copy now; will not be shown again):
+          {{ jenkins_admin_api_token_value }}
+      when:
+        - (jenkins_bootstrap_api_token_print_once | default(false) | bool)
+        - (jenkins_token_minted_this_run | default(false) | bool)
+
+    - name: Warn when printing secrets to stdout
+      ansible.builtin.debug:
+        msg: >-
+          WARNING: Printing secrets to stdout can leak into logs. Disable
+          jenkins_bootstrap_api_token_print_once in CI.
+      when:
+        - (jenkins_bootstrap_api_token_print_once | default(false) | bool)
+        - (jenkins_token_minted_this_run | default(false) | bool)

@@ -13,6 +13,7 @@ build/
 *.tar.gz
 
 # Ansible / Molecule / test output
+.ansible/
 .molecule/
 .cache/
 tests/output/

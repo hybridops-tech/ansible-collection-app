@@ -3,12 +3,9 @@
 # adr: ADR-0606-ansible-collections-release-process
 # maintainer: HybridOps.Tech
 
-- name: netbox_service smoke test
+- name: NetBox service smoke test
   hosts: cicd_test
   become: true
-  vars:
-    # netbox_smoke_only: true
-    # netbox_require_db: false
   tasks:
     - name: Apply netbox_service (smoke-only)
       ansible.builtin.include_role:

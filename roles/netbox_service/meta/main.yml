@@ -13,8 +13,6 @@ galaxy_info:
     - name: EL
       versions: ["9"]
     - name: Ubuntu
-      versions: ["22.04", "24.04"]
+      versions: ["jammy", "noble"]
 
-dependencies:
-  - role: hybridops.common.docker_engine
-    when: netbox_install_docker_engine | bool
+dependencies: []

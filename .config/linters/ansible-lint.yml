@@ -5,6 +5,7 @@
 profile: production
 
 exclude_paths:
+  - .ansible
   - .git
   - .github
   - .tox
@@ -18,6 +19,10 @@ exclude_paths:
 
 skip_list:
   - yaml  # YAML style is enforced by yamllint via pre-commit.
+  # HybridOps roles intentionally expose service-oriented variable contracts.
+  # Enforcing a role-name prefix here would create breaking churn without
+  # improving the shipped collection surface.
+  - var-naming[no-role-prefix]
 
 warn_list:
   - no-changed-when

@@ -1,7 +1,7 @@
 ---
 galaxy_info:
   role_name: jenkins_agents_docker
-  author: HybridOps.Studio
+  author: HybridOps.Tech
   description: Configure a Docker-based Jenkins bootstrap agent on the control node.
   license: MIT-0
   min_ansible_version: "2.15"
@@ -9,5 +9,5 @@ galaxy_info:
     - name: EL
       versions: ["9"]
     - name: Ubuntu
-      versions: ["22.04", "24.04"]
+      versions: ["jammy", "noble"]
 dependencies: []

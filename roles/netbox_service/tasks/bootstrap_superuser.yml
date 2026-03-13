@@ -54,6 +54,7 @@
     DJANGO_SUPERUSER_PASSWORD: "{{ netbox_superuser_password }}"
   no_log: true
   when: _nb_su_exists.rc != 0
+  changed_when: true
 
 - name: Check whether NetBox superuser password matches desired value
   ansible.builtin.command:
@@ -111,3 +112,4 @@
     - netbox_superuser_password_enforce | bool
     - _nb_su_password_matches is defined
     - _nb_su_password_matches.rc != 0
+  changed_when: true
