@@ -1,2 +1,3 @@
 ---
-# isolated dependencies for ansible-collection-helper tests
+# isolated dependencies for ansible-collection-app tests
+collections: []

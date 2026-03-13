@@ -24,10 +24,10 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
           python-version: "3.12"
           cache: pip
@@ -44,9 +44,32 @@ jobs:
         run: |
           pre-commit run --all-files
 
-      - name: Run ansible-lint
+      - name: Run ansible-lint on changed Ansible files
+        shell: bash
         run: |
-          ansible-lint -c .config/linters/ansible-lint.yml
+          if [ "${GITHUB_EVENT_NAME}" = "pull_request" ]; then
+            BASE_SHA="${{ github.event.pull_request.base.sha }}"
+          else
+            BASE_SHA="${{ github.event.before }}"
+          fi
+          if [ -z "${BASE_SHA}" ] || printf '%s' "${BASE_SHA}" | grep -Eq '^0+$'; then
+            BASE_SHA="$(git rev-list --max-parents=0 HEAD | tail -n1)"
+          fi
+          mapfile -t LINT_TARGETS < <(
+            git diff --name-only --diff-filter=ACMR "${BASE_SHA}" HEAD -- \
+              galaxy.yml \
+              requirements.yml \
+              ':(glob)roles/**/*.yml' \
+              ':(glob)roles/**/*.yaml' \
+            | sort -u
+          )
+          if [ "${#LINT_TARGETS[@]}" -eq 0 ]; then
+            echo "No changed Ansible files to lint."
+            exit 0
+          fi
+          printf 'ansible-lint targets:\n'
+          printf '  %s\n' "${LINT_TARGETS[@]}"
+          ansible-lint -c .config/linters/ansible-lint.yml "${LINT_TARGETS[@]}"
 
       - name: Build collection (sanity)
         run: |
