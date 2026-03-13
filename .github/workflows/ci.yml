@@ -38,7 +38,7 @@ jobs:
           if [ -f requirements.txt ]; then
             pip install -r requirements.txt
           fi
-          pip install pre-commit
+          pip install pre-commit ansible-lint
 
       - name: Run pre-commit
         shell: bash
@@ -79,4 +79,4 @@ jobs:
 
       - name: Build collection (sanity)
         run: |
-          ansible-galaxy collection build
+          ansible-galaxy collection build --force
