@@ -41,8 +41,14 @@ jobs:
           pip install pre-commit
 
       - name: Run pre-commit
+        shell: bash
         run: |
-          pre-commit run --all-files
+          if [ "${GITHUB_EVENT_NAME}" = "pull_request" ]; then
+            BASE_SHA="${{ github.event.pull_request.base.sha }}"
+            pre-commit run --from-ref "${BASE_SHA}" --to-ref HEAD
+          else
+            pre-commit run --all-files
+          fi
 
       - name: Run ansible-lint on changed Ansible files
         shell: bash
