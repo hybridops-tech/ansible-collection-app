@@ -29,7 +29,7 @@ tags:
   - linux
   - windows
 
-homepage: https://docs.hybridops.tech
+homepage: https://hybridops.tech
 documentation: https://docs.hybridops.tech
 repository: https://github.com/hybridops-tech/ansible-collection-app
 issues: https://github.com/hybridops-tech/ansible-collection-app/issues
