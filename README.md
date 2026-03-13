@@ -2,7 +2,7 @@
 
 Application and platform service roles for HybridOps.
 
-This collection contains reusable service roles that sit above the shared platform primitives in `hybridops.common`: NetBox, EVE-NG, pgBackRest repository services, and Jenkins controller/agent delivery.
+This collection contains the service roles that sit above the shared platform primitives in `hybridops.common`: NetBox, EVE-NG, pgBackRest repository services, and Jenkins controller or agent delivery.
 
 Role-level variables and assumptions are documented in each role's `README.md`. Broader operator guidance lives at [docs.hybridops.tech](https://docs.hybridops.tech).
 
@@ -10,7 +10,7 @@ Role-level variables and assumptions are documented in each role's `README.md`. 
 
 - Linux-hosted platform services used by HybridOps modules and blueprints.
 - Application roles that can be reused directly when their documented inputs are satisfied.
-- Service roles that are intended to be packaged and consumed from Galaxy rather than copied into each project.
+- Service roles intended to be packaged and consumed from Galaxy rather than copied into each project.
 
 ## Roles
 
@@ -60,7 +60,7 @@ collections:
 ## Testing
 
 - Role-local smoke and Molecule scenarios are included where they add value.
-- Production-grade validation is exercised through HybridOps module and blueprint runs in `hybridops-core`.
+- Integration validation is exercised through HybridOps module and blueprint runs in `hybridops-core`.
 
 ## License
 
