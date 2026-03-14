@@ -31,7 +31,6 @@
 
   roles:
     - role: hybridops.app.jenkins_controller
-
   # Example of full composition when consuming from Galaxy or platform playbooks:
   #
   # - name: Deploy Jenkins controller (composed)

@@ -9,6 +9,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - No unreleased changes yet.
 
+## [0.1.2] - 2026-03-13
+
+### Changed
+
+- Cleaned the published app-role metadata, README surface, and CI release path.
+- Normalized the active EVE-NG, NetBox, and Jenkins role YAML so the release branch stays Galaxy-ready.
+
 ## [0.1.1] - 2026-03-10
 
 ### Changed
@@ -21,7 +28,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - Initial publication of the `hybridops.app` collection.
-- Application and platform roles for HybridOps.Studio, including initial roles such as:
+- Application and platform roles for HybridOps, including initial roles such as:
   - `control_node_secrets_guard`
   - `jenkins_controller`
   - `linux_deploy_nginx`
@@ -37,6 +44,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Role-local `tests/` harnesses and optional Molecule scenarios for selected roles.
 - `galaxy.yml` metadata for namespace `hybridops` and collection name `app`.
 
-[Unreleased]: https://github.com/hybridops-tech/ansible-collection-app/compare/v0.1.1...HEAD
+[Unreleased]: https://github.com/hybridops-tech/ansible-collection-app/compare/v0.1.2...HEAD
+[0.1.2]: https://github.com/hybridops-tech/ansible-collection-app/compare/v0.1.1...v0.1.2
 [0.1.1]: https://github.com/hybridops-tech/ansible-collection-app/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/hybridops-tech/ansible-collection-app/releases/tag/v0.1.0
