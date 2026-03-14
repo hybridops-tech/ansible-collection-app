@@ -13,13 +13,21 @@
     jenkins_home_path: "/opt/jenkins"
     jenkins_external_http_port: 8080
     jenkins_external_agent_port: 50000
+    jenkins_admin_password: >-
+      {{
+        lookup('ansible.builtin.env', 'JENKINS_ADMIN_PASSWORD')
+        | default('', true)
+        | string
+        | trim
+      }}
 
     # Bootstrap / CI behaviour: allow controller to execute a trivial job before agents exist.
     jenkins_controller_num_executors: 1
     jenkins_enable_healthcheck: true
+
     # Secret injection:
     # Provide JENKINS_ADMIN_PASSWORD via CI secret store / Vault / env before running.
-    # The role fail fast if this is empty.
+    # The role fails fast if this is empty.
 
   roles:
     - role: hybridops.app.jenkins_controller

@@ -1,0 +1,5 @@
+kind: role-smoke
+role_fqcn: hybridops.app.jenkins_controller
+playbook: smoke.yml
+required_env:
+  - JENKINS_ADMIN_PASSWORD
