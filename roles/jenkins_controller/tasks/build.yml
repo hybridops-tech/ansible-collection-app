@@ -11,11 +11,18 @@
 - name: Fail when Docker Engine is not available
   ansible.builtin.fail:
     msg: >
-      Docker Engine does not appear to be available on this host. hybridops.app.jenkins_controller requires Docker Engine and Docker Compose v2.
+      Docker Engine does not appear to be available on this host.
+      hybridops.app.jenkins_controller requires Docker Engine and Docker
+      Compose v2.
 
-      Command: docker version --format '{{ "{{.Server.Version}}" }}' Return code: {{ jenkins_docker_check.rc }} Output: {{ jenkins_docker_check.stdout | default('') | trim }} Error: {{ jenkins_docker_check.stderr | default('') | trim }}
+      Command: docker version --format '{{ "{{.Server.Version}}" }}'
+      Return code: {{ jenkins_docker_check.rc }}
+      Output: {{ jenkins_docker_check.stdout | default('') | trim }}
+      Error: {{ jenkins_docker_check.stderr | default('') | trim }}
 
-      Install and fix Docker first (for example via hybridops.common.docker_engine) until the docker CLI can talk to the daemon, then re-run this role.
+      Install and fix Docker first, for example via
+      hybridops.common.docker_engine, until the docker CLI can talk to the
+      daemon, then re-run this role.
   when: jenkins_docker_check.rc != 0
 
 - name: Check Docker Compose v2 plugin is available
@@ -29,7 +36,10 @@
     msg: >
       Docker Compose v2 does not appear to be available on this host.
 
-      Command: docker compose version Return code: {{ jenkins_compose_check.rc }} Output: {{ jenkins_compose_check.stdout | default('') | trim }} Error: {{ jenkins_compose_check.stderr | default('') | trim }}
+      Command: docker compose version
+      Return code: {{ jenkins_compose_check.rc }}
+      Output: {{ jenkins_compose_check.stdout | default('') | trim }}
+      Error: {{ jenkins_compose_check.stderr | default('') | trim }}
 
       Install Docker Compose v2 (for example via hybridops.common.docker_engine) and re-run.
   when: jenkins_compose_check.rc != 0
@@ -37,9 +47,14 @@
 - name: Fail when admin password is not provided
   ansible.builtin.fail:
     msg: >
-      jenkins_admin_password is required. Provide it via env (JENKINS_ADMIN_PASSWORD) or group_vars/host_vars aligned with the secrets strategy.
+      jenkins_admin_password is required. Provide it via env
+      (JENKINS_ADMIN_PASSWORD) or group_vars/host_vars aligned with the
+      secrets strategy.
   when:
-  - jenkins_admin_password is not defined or jenkins_admin_password is none or (jenkins_admin_password | string | trim | length) == 0
+    - >-
+      jenkins_admin_password is not defined
+      or jenkins_admin_password is none
+      or (jenkins_admin_password | string | trim | length) == 0
 
 - name: Ensure Jenkins controller directories exist
   ansible.builtin.file:
@@ -49,9 +64,16 @@
     owner: "{{ item.owner | default(omit) }}"
     group: "{{ item.group | default(omit) }}"
   loop:
-  - { path: "{{ jenkins_home_path }}", mode: "0755" }
-  - { path: "{{ jenkins_home_path }}/jenkins_home", mode: "0755", owner: "{{ jenkins_uid }}", group: "{{ jenkins_gid }}" }
-  - { path: "{{ jenkins_home_path }}/jenkins_home/casc_configs", mode: "0755", owner: "{{ jenkins_uid }}", group: "{{ jenkins_gid }}" }
+    - path: "{{ jenkins_home_path }}"
+      mode: "0755"
+    - path: "{{ jenkins_home_path }}/jenkins_home"
+      mode: "0755"
+      owner: "{{ jenkins_uid }}"
+      group: "{{ jenkins_gid }}"
+    - path: "{{ jenkins_home_path }}/jenkins_home/casc_configs"
+      mode: "0755"
+      owner: "{{ jenkins_uid }}"
+      group: "{{ jenkins_gid }}"
 
 - name: Stage JCasC secrets
   ansible.builtin.include_tasks: casc_secrets.yml
@@ -125,5 +147,5 @@
   ansible.builtin.debug:
     var: jenkins_build_result.build
   when:
-  - jenkins_build_result is defined
-  - (ansible_verbosity | default(0)) | int >= 2
+    - jenkins_build_result is defined
+    - (ansible_verbosity | default(0)) | int >= 2

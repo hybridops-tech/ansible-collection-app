@@ -5,16 +5,16 @@
 - name: Build Jenkins controller image and render baseline configuration
   ansible.builtin.import_tasks: build.yml
   tags:
-  - jenkins
-  - jenkins_controller
-  - build
+    - jenkins
+    - jenkins_controller
+    - build
 
 - name: Deploy Jenkins controller stack
   ansible.builtin.import_tasks: deploy.yml
   tags:
-  - jenkins
-  - jenkins_controller
-  - deploy
+    - jenkins
+    - jenkins_controller
+    - deploy
 
 - name: Bootstrap admin API token for automation
   ansible.builtin.include_tasks: api_token.yml

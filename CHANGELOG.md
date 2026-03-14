@@ -9,6 +9,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - No unreleased changes yet.
 
+## [0.1.3] - 2026-03-14
+
+### Changed
+
+- Added an explicit Jenkins smoke contract so `hyops test role` can fail early when required runtime secrets are missing.
+- Prepared the collection runtime inside CI before direct `ansible-lint` so smoke playbooks resolve `hybridops.app` consistently on GitHub runners.
+- Normalized the Jenkins smoke playbook for stricter direct lint execution.
+
 ## [0.1.2] - 2026-03-13
 
 ### Changed
@@ -44,7 +52,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Role-local `tests/` harnesses and optional Molecule scenarios for selected roles.
 - `galaxy.yml` metadata for namespace `hybridops` and collection name `app`.
 
-[Unreleased]: https://github.com/hybridops-tech/ansible-collection-app/compare/v0.1.2...HEAD
+[Unreleased]: https://github.com/hybridops-tech/ansible-collection-app/compare/v0.1.3...HEAD
+[0.1.3]: https://github.com/hybridops-tech/ansible-collection-app/compare/v0.1.2...v0.1.3
 [0.1.2]: https://github.com/hybridops-tech/ansible-collection-app/compare/v0.1.1...v0.1.2
 [0.1.1]: https://github.com/hybridops-tech/ansible-collection-app/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/hybridops-tech/ansible-collection-app/releases/tag/v0.1.0

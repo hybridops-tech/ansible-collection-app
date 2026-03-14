@@ -24,7 +24,7 @@
     url: "http://localhost:{{ jenkins_external_http_port }}/login"
     method: GET
     follow_redirects: all
-    status_code: [ 200, 302, 403 ]
+    status_code: [200, 302, 403]
     return_content: false
   register: jenkins_health_check
   retries: 30
@@ -39,5 +39,5 @@
     jenkins_casc_secrets_stage: false
     jenkins_casc_secrets_cleanup: true
   when:
-  - jenkins_casc_secrets_enabled | bool
-  - jenkins_casc_secrets_delete_staged | bool
+    - jenkins_casc_secrets_enabled | bool
+    - jenkins_casc_secrets_delete_staged | bool

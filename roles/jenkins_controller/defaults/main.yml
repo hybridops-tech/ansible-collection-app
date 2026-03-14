@@ -10,11 +10,23 @@ jenkins_bootstrap_persist_to_control_secrets_env: false
 jenkins_control_secrets_env_path: >-
   {{
     (
-      (ansible_env.XDG_CONFIG_HOME | default(lookup('ansible.builtin.env','XDG_CONFIG_HOME'), true) | default('', true)) | trim
+      (
+        ansible_env.XDG_CONFIG_HOME
+        | default(lookup('ansible.builtin.env', 'XDG_CONFIG_HOME'), true)
+        | default('', true)
+      ) | trim
     ) | length > 0
     | ternary(
-        (ansible_env.XDG_CONFIG_HOME | default(lookup('ansible.builtin.env','XDG_CONFIG_HOME'), true) | trim) ~ '/hybridops/secrets.vault.env',
-        (ansible_env.HOME | default(lookup('ansible.builtin.env','HOME'), true) | default('/tmp', true)) ~ '/.config/hybridops/secrets.vault.env'
+        (
+          ansible_env.XDG_CONFIG_HOME
+          | default(lookup('ansible.builtin.env', 'XDG_CONFIG_HOME'), true)
+          | trim
+        ) ~ '/hybridops/secrets.vault.env',
+        (
+          ansible_env.HOME
+          | default(lookup('ansible.builtin.env', 'HOME'), true)
+          | default('/tmp', true)
+        ) ~ '/.config/hybridops/secrets.vault.env'
       )
   }}
 
