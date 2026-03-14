@@ -42,6 +42,31 @@ jobs:
           fi
           pip install pre-commit ansible-lint
 
+      - name: Prepare collection runtime
+        shell: bash
+        run: |
+          COLLECTIONS_ROOT="${PWD}/.ansible/collections"
+          COLLECTIONS_TAIL="${HOME}/.ansible/collections:/usr/share/ansible/collections"
+
+          mkdir -p "${COLLECTIONS_ROOT}/ansible_collections/hybridops"
+          ln -sfn "${PWD}" "${COLLECTIONS_ROOT}/ansible_collections/hybridops/app"
+
+          if python - <<'PY'
+          import pathlib
+          import yaml
+          data = yaml.safe_load(pathlib.Path("requirements.yml").read_text()) or {}
+          raise SystemExit(0 if data.get("collections") else 1)
+          PY
+          then
+            env -u ANSIBLE_COLLECTIONS_PATHS \
+              ANSIBLE_COLLECTIONS_PATH="${COLLECTIONS_ROOT}:${COLLECTIONS_TAIL}" \
+              ansible-galaxy collection install -r requirements.yml -p "${COLLECTIONS_ROOT}" --force
+          fi
+
+          {
+            echo "ANSIBLE_COLLECTIONS_PATH=${COLLECTIONS_ROOT}:${COLLECTIONS_TAIL}"
+          } >> "${GITHUB_ENV}"
+
       - name: Run pre-commit
         shell: bash
         run: |
