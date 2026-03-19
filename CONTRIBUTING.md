@@ -1,8 +1,8 @@
 # Contributing to `hybridops.app`
 
-`hybridops.app` provides application and platform roles for HybridOps.Studio (for example Jenkins controller, RKE2 control-plane, NetBox, Moodle, and core platform services).
+`hybridops.app` provides application and platform roles for HybridOps.Tech (for example Jenkins controller, RKE2 control-plane, NetBox, Moodle, and core platform services).
 
-Design and release context is maintained in the HybridOps.Studio documentation site.
+Design and release context is maintained in the HybridOps.Tech documentation site.
 
 ## Contribution scope
 

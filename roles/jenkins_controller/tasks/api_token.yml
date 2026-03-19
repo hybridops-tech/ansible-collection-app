@@ -1,7 +1,7 @@
 ---
 # purpose: Mint and persist Jenkins admin API token for automation (controller-host only)
 # adr: ADR-0603-run-jenkins-controller-on-control-node-agents-on-rke2
-# maintainer: HybridOps.Studio
+# maintainer: HybridOps.Tech
 
 - name: Skip API token management when disabled
   ansible.builtin.meta: end_host

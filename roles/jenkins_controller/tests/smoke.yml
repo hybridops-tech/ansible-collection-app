@@ -1,6 +1,6 @@
 ---
 # purpose: Smoke test for hybridops.app.jenkins_controller
-# note: 'cicd_test' is an example inventory group used in the HybridOps.Studio lab.
+# note: 'cicd_test' is an example inventory group used in the HybridOps.Tech lab.
 # prerequisite: Docker Engine + Compose v2 must already be installed on the target host
 #               (for example via hybridops.common.docker_engine in a higher-level playbook).
 

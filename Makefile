@@ -1,6 +1,6 @@
 # purpose: Test wrapper for Molecule scenarios in the hybridops.app collection.
 # adr: ADR-0606-ansible-collections-release-process
-# maintainer: HybridOps.Studio
+# maintainer: HybridOps.Tech
 
 SHELL := /bin/bash
 .SHELLFLAGS := -eu -o pipefail -c

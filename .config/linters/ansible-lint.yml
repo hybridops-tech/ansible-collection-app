@@ -1,6 +1,6 @@
 # purpose: Ansible-lint configuration for HybridOps Ansible collections.
 # adr: ADR-0606-ansible-collections-release-process
-# maintainer: HybridOps.Studio
+# maintainer: HybridOps.Tech
 
 profile: production
 

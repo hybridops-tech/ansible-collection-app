@@ -1,6 +1,6 @@
 # purpose: Build Jenkins controller Docker image with plugins and render baseline JCasC
 # adr: ADR-0603-run-jenkins-controller-on-control-node-agents-on-rke2
-# maintainer: HybridOps.Studio
+# maintainer: HybridOps.Tech
 
 - name: Check Docker Engine is available for Jenkins controller
   ansible.builtin.command: docker version --format '{{ "{{.Server.Version}}" }}'

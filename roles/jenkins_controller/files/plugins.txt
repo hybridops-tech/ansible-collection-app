@@ -1,5 +1,5 @@
 # purpose: Jenkins plugins for HybridOps.Platform controller
-# maintainer: HybridOps.Studio
+# maintainer: HybridOps.Tech
 
 configuration-as-code
 workflow-aggregator

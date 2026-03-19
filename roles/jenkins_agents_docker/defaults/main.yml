@@ -1,7 +1,7 @@
 ---
 # purpose: Defaults for docker-based Jenkins bootstrap agent configuration
 # adr: ADR-0603-run-jenkins-controller-on-control-node-agents-on-rke2
-# maintainer: HybridOps.Studio
+# maintainer: HybridOps.Tech
 
 jenkins_agents_docker_enabled: true
 

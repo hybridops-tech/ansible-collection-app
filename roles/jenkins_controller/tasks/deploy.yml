@@ -1,6 +1,6 @@
 # purpose: Deploy Jenkins controller using Docker Compose and wait for HTTP readiness
 # adr: ADR-0603-run-jenkins-controller-on-control-node-agents-on-rke2
-# maintainer: HybridOps.Studio
+# maintainer: HybridOps.Tech
 
 - name: Render Docker Compose file for Jenkins controller
   ansible.builtin.template:

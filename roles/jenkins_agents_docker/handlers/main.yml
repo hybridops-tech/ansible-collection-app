@@ -1,7 +1,7 @@
 ---
 # purpose: Handlers for jenkins_agents_docker
 # adr: ADR-0603-jenkins-controller-docker-agents-rke2
-# maintainer: HybridOps.Studio
+# maintainer: HybridOps.Tech
 
 - name: Reload Jenkins Configuration as Code
   ansible.builtin.uri:
