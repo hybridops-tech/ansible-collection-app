@@ -6,6 +6,7 @@
 - name: NetBox service smoke test
   hosts: cicd_test
   become: true
+  vars: {}
   tasks:
     - name: Apply netbox_service (smoke-only)
       ansible.builtin.include_role:

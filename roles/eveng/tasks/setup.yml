@@ -30,17 +30,17 @@
     regexp: '^#?\s*PermitRootLogin'
     line: 'PermitRootLogin yes'
     backup: true
-  notify: Restart sshd
+  notify: restart sshd
   when: _eveng_install_required | bool
 
-- name: Download EVE-NG GPG key
+- name: Add EVE-NG GPG key
   ansible.builtin.get_url:
     url: http://www.eve-ng.net/jammy/eczema@ecze.com.gpg.key
     dest: /tmp/eve-ng.gpg.key
     mode: "0644"
   when: _eveng_install_required | bool
 
-- name: Install EVE-NG GPG key
+- name: Convert EVE-NG GPG key into keyring format
   ansible.builtin.command:
     argv:
       - gpg
@@ -88,6 +88,7 @@
   environment:
     DEBIAN_FRONTEND: noninteractive
   when: _eveng_install_required | bool
+  failed_when: false
 
 - name: Install EVE-NG package (blocking)
   ansible.builtin.apt:
@@ -137,8 +138,8 @@
           - chpasswd
       args:
         stdin: "root:{{ eveng_root_password }}"
-      no_log: true
       changed_when: true
+      no_log: true
 
     - name: Set hostname
       ansible.builtin.hostname:
@@ -244,7 +245,7 @@
       line: "max_execution_time = {{ eveng_php_max_execution }}"
     - regexp: '^memory_limit'
       line: "memory_limit = {{ eveng_php_memory_limit }}"
-  notify: Restart apache2
+  notify: restart apache2
   when:
     - eveng_configure_php | bool
     - eveng_resource_profile == 'standard'
@@ -266,15 +267,18 @@
   when: eveng_configure_sysctl | bool
 
 - name: Disable swap
-  ansible.builtin.shell: swapoff -a && sed -i.bak '/swap/d' /etc/fstab
+  ansible.builtin.shell: |
+    set -o pipefail
+    swapoff -a
+    sed -i.bak '/swap/d' /etc/fstab
   args:
     executable: /bin/bash
   when: eveng_disable_swap | bool
-  changed_when: false
+  changed_when: true
 
 - name: Fix file permissions
   ansible.builtin.command: /opt/unetlab/wrappers/unl_wrapper -a fixpermissions
-  changed_when: false
+  changed_when: true
 
 - name: Start Apache
   ansible.builtin.systemd:
@@ -322,14 +326,29 @@
   changed_when: false
   when:
     - eveng_db_init is defined
-    - "'eve_ng_db' not in eveng_db_check.stdout"
+    - not (eveng_db_init.skipped | default(false))
+    - (eveng_db_init.rc | default(1)) == 0
+
+- name: Record database readiness
+  ansible.builtin.set_fact:
+    eveng_db_ready: >-
+      {{
+        ('eve_ng_db' in (eveng_db_check.stdout | default(''))) or
+        ('eve_ng_db' in (eveng_db_recheck.stdout | default('')))
+      }}
+
+- name: Fail when EVE-NG database is unavailable
+  ansible.builtin.assert:
+    that:
+      - eveng_db_ready | bool
+    fail_msg: "EVE-NG database eve_ng_db is not available after initialization."
 
 - name: Check admin user exists
   ansible.builtin.command: mysql eve_ng_db -e "SELECT COUNT(*) FROM users WHERE username='admin';"
   register: admin_exists
   changed_when: false
   failed_when: false
-  when: "'eve_ng_db' in eveng_db_check.stdout"
+  when: eveng_db_ready | bool
 
 - name: Ensure admin pod exists
   ansible.builtin.command: mysql eve_ng_db -e "INSERT IGNORE INTO pods (id, username) VALUES (0, 'admin');"
@@ -338,7 +357,7 @@
     'Records: 1' in admin_pod_result.stderr or 'Records: 1' in admin_pod_result.stdout
   failed_when: false
   when:
-    - "'eve_ng_db' in eveng_db_check.stdout"
+    - eveng_db_ready | bool
     - admin_exists is defined
     - admin_exists.rc == 0
 
@@ -353,7 +372,7 @@
   when:
     - eveng_admin_password is defined
     - eveng_admin_password != ''
-    - "'eve_ng_db' in eveng_db_check.stdout"
+    - eveng_db_ready | bool
     - admin_exists is defined
     - admin_exists.stdout_lines[1] != '0'
   no_log: true
@@ -376,7 +395,7 @@
   when:
     - eveng_users is defined
     - eveng_users | length > 0
-    - "'eve_ng_db' in eveng_db_check.stdout"
+    - eveng_db_ready | bool
 
 - name: Create user pods
   ansible.builtin.command: >-
@@ -390,7 +409,7 @@
   when:
     - eveng_users is defined
     - eveng_users | length > 0
-    - "'eve_ng_db' in eveng_db_check.stdout"
+    - eveng_db_ready | bool
 
 - name: Flush handlers
   ansible.builtin.meta: flush_handlers
