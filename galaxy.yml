@@ -28,6 +28,12 @@ tags:
   - moodle
   - linux
   - windows
+  - kubernetes
+  - k8s
+  - postgresql
+  - patroni
+  - argocd
+  - proxmox
 
 homepage: https://hybridops.tech
 documentation: https://docs.hybridops.tech
