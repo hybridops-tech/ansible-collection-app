@@ -9,6 +9,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - No unreleased changes yet.
 
+## [0.1.6] - 2026-06-14
+
+### Changed
+
+- Cleaned public Galaxy metadata so collection references point to the published Galaxy and documentation surfaces.
+- Tightened the package surface to exclude local Ansible workspace content, old build archives, and showcase-only assets.
+
 ## [0.1.5] - 2026-04-03
 
 ### Fixed
@@ -64,11 +71,3 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - `windows_windows_updates`
 - Role-local `tests/` harnesses and optional Molecule scenarios for selected roles.
 - `galaxy.yml` metadata for namespace `hybridops` and collection name `app`.
-
-[Unreleased]: https://github.com/hybridops-tech/ansible-collection-app/compare/v0.1.5...HEAD
-[0.1.5]: https://github.com/hybridops-tech/ansible-collection-app/compare/v0.1.4...v0.1.5
-[0.1.4]: https://github.com/hybridops-tech/ansible-collection-app/compare/v0.1.3...v0.1.4
-[0.1.3]: https://github.com/hybridops-tech/ansible-collection-app/compare/v0.1.2...v0.1.3
-[0.1.2]: https://github.com/hybridops-tech/ansible-collection-app/compare/v0.1.1...v0.1.2
-[0.1.1]: https://github.com/hybridops-tech/ansible-collection-app/compare/v0.1.0...v0.1.1
-[0.1.0]: https://github.com/hybridops-tech/ansible-collection-app/releases/tag/v0.1.0

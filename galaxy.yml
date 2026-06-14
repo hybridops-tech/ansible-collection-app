@@ -5,7 +5,7 @@
 
 namespace: hybridops
 name: app
-version: "0.1.5"
+version: "0.1.6"
 
 readme: README.md
 description: >-
@@ -37,8 +37,8 @@ tags:
 
 homepage: https://hybridops.tech
 documentation: https://docs.hybridops.tech
-repository: https://github.com/hybridops-tech/ansible-collection-app
-issues: https://github.com/hybridops-tech/ansible-collection-app/issues
+repository: https://galaxy.ansible.com/hybridops/app
+issues: https://hybridops.tech/contact
 
 dependencies:
   hybridops.common: ">=0.1.0"
@@ -46,13 +46,29 @@ dependencies:
 
 build_ignore:
   - .git
+  - .gitignore
   - .github
+  - .ansible
+  - .config/linters/.ansible
+  - .config/linters/.ansible/**
   - .tox
   - .venv
+  - "*.tar.gz"
   - build
   - dist
   - output
+  - roles/*/.github
+  - roles/*/.github/**
+  - roles/*/.showcase
+  - roles/*/.showcase/**
+  - roles/*/tests/output
+  - roles/*/tests/output/**
+  - roles/*/tests/outputs
+  - roles/*/tests/outputs/**
   - tests/output
+  - tests/output/**
+  - tests/outputs
+  - tests/outputs/**
   - __pycache__
   - .mypy_cache
   - .pytest_cache

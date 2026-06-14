@@ -13,7 +13,7 @@ Appropriate changes include:
 - Test improvements (role-local smoke tests, Molecule scenarios where applicable).
 - Documentation updates (`README.md` and role-level README content).
 
-Bug reports and feature requests are handled via GitHub issues and pull requests.
+Bug reports and feature requests are handled through the documented HybridOps support and maintainer workflow.
 
 ## Development workflow
 
