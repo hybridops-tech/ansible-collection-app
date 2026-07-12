@@ -64,8 +64,14 @@
   changed_when: false
 
 - name: Read guest NAT masquerade state
-  ansible.builtin.command: >-
-    iptables -t nat -C POSTROUTING -s {{ eveng_guest_nat_subnet }} -j MASQUERADE
+  ansible.builtin.shell: |
+    set -euo pipefail
+    outbound_interface="$(ip -4 route show default | awk 'NR == 1 {print $5}')"
+    test -n "$outbound_interface"
+    iptables -t nat -C POSTROUTING -s "{{ eveng_guest_nat_subnet }}" \
+      -o "$outbound_interface" -j MASQUERADE
+  args:
+    executable: /bin/bash
   register: eveng_guest_nat_masquerade_state
   changed_when: false
 
