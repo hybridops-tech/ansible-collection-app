@@ -60,6 +60,25 @@ Kernel parameters applied when `eveng_configure_sysctl: true`:
 - `net.ipv4.conf.all.rp_filter=0`
 - `net.ipv4.conf.default.rp_filter=0`
 
+### Guest NAT egress
+
+Guest egress is opt-in so existing on-prem network designs are unchanged:
+
+```yaml
+eveng_guest_nat_enabled: true
+eveng_guest_nat_bridge: pnet9
+eveng_guest_nat_cidr: 172.29.129.1/24
+eveng_guest_nat_subnet: 172.29.129.0/24
+eveng_guest_nat_dhcp_start: 172.29.129.50
+eveng_guest_nat_dhcp_end: 172.29.129.200
+```
+
+The role creates an internal EVE bridge, provides DHCP and DNS with dnsmasq,
+and masquerades the guest subnet through the host's default-route interface.
+It does not add another cloud interface or expose lab nodes publicly. Attach a
+lab node to the corresponding Cloud network when outbound package access is
+required; ordinary Bridge networks remain isolated.
+
 ### Credentials
 
 ```yaml

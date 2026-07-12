@@ -1,0 +1,34 @@
+#!/usr/bin/env bash
+# purpose: Maintain the HybridOps-owned EVE-NG guest NAT bridge
+# maintainer: HybridOps.Tech
+
+set -euo pipefail
+
+bridge={{ eveng_guest_nat_bridge | quote }}
+bridge_cidr={{ eveng_guest_nat_cidr | quote }}
+guest_subnet={{ eveng_guest_nat_subnet | quote }}
+outbound_interface="$(ip -4 route show default | awk 'NR == 1 {print $5}')"
+
+if [[ -z "${outbound_interface}" ]]; then
+  echo "No IPv4 default-route interface was found." >&2
+  exit 1
+fi
+
+if ! ip link show "${bridge}" >/dev/null 2>&1; then
+  ip link add name "${bridge}" type bridge
+fi
+
+ip address replace "${bridge_cidr}" dev "${bridge}"
+ip link set "${bridge}" up
+sysctl -q -w net.ipv4.ip_forward=1
+
+iptables -C FORWARD -i "${bridge}" -o "${outbound_interface}" -j ACCEPT 2>/dev/null \
+  || iptables -A FORWARD -i "${bridge}" -o "${outbound_interface}" -j ACCEPT
+iptables -C FORWARD -i "${outbound_interface}" -o "${bridge}" \
+  -m conntrack --ctstate RELATED,ESTABLISHED -j ACCEPT 2>/dev/null \
+  || iptables -A FORWARD -i "${outbound_interface}" -o "${bridge}" \
+    -m conntrack --ctstate RELATED,ESTABLISHED -j ACCEPT
+iptables -t nat -C POSTROUTING -s "${guest_subnet}" -o "${outbound_interface}" \
+  -j MASQUERADE 2>/dev/null \
+  || iptables -t nat -A POSTROUTING -s "${guest_subnet}" -o "${outbound_interface}" \
+    -j MASQUERADE

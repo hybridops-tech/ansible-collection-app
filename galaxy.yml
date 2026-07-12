@@ -5,7 +5,7 @@
 
 namespace: hybridops
 name: app
-version: "0.1.6"
+version: "0.1.7"
 
 readme: README.md
 description: >-
@@ -42,7 +42,7 @@ issues: https://hybridops.tech/contact
 
 dependencies:
   hybridops.common: ">=0.1.0"
-  hybridops.helper: ">=0.1.0"
+  hybridops.helper: ">=0.1.6"
 
 build_ignore:
   - .git

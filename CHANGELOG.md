@@ -9,6 +9,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - No unreleased changes yet.
 
+## [0.1.7] - 2026-07-12
+
+### Added
+
+- Added optional DHCP, DNS, forwarding, and NAT egress for EVE-NG lab nodes
+  through a dedicated private bridge.
+- Added persistent service configuration and readiness checks for the guest
+  bridge and scoped masquerade rule.
+
+### Changed
+
+- Require `hybridops.helper` 0.1.6 or later so the guest-egress release is
+  installed with the corrected EVE-NG image lifecycle.
+
 ## [0.1.6] - 2026-06-14
 
 ### Changed

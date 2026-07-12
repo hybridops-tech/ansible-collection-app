@@ -10,3 +10,16 @@
   ansible.builtin.systemd:
     name: sshd
     state: restarted
+
+- name: Restart EVE-NG guest NAT
+  listen: restart eveng guest nat
+  ansible.builtin.systemd:
+    name: hybridops-eveng-guest-nat.service
+    state: restarted
+    daemon_reload: true
+
+- name: Restart dnsmasq
+  listen: restart dnsmasq
+  ansible.builtin.systemd:
+    name: dnsmasq
+    state: restarted

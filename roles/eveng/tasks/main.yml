@@ -18,6 +18,14 @@
     - install
     - config
 
+- name: Configure guest NAT egress
+  ansible.builtin.include_tasks: guest-nat.yml
+  when: eveng_guest_nat_enabled | bool
+  tags:
+    - eveng
+    - network
+    - guest-nat
+
 - name: Manage additional users
   ansible.builtin.include_tasks: users.yml
   when:

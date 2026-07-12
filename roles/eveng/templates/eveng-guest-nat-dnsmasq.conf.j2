@@ -1,0 +1,8 @@
+# Managed by HybridOps. Provides DHCP and DNS only on the EVE-NG guest NAT bridge.
+interface={{ eveng_guest_nat_bridge }}
+bind-dynamic
+dhcp-range={{ eveng_guest_nat_dhcp_start }},{{ eveng_guest_nat_dhcp_end }},{{ eveng_guest_nat_lease }}
+dhcp-option=option:router,{{ eveng_guest_nat_cidr.split('/')[0] }}
+dhcp-option=option:dns-server,{{ eveng_guest_nat_cidr.split('/')[0] }}
+domain-needed
+bogus-priv

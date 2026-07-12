@@ -1,0 +1,83 @@
+---
+# purpose: Provide private DHCP, DNS and NAT egress for EVE-NG lab nodes
+# maintainer: HybridOps.Tech
+
+- name: Validate guest NAT settings
+  ansible.builtin.assert:
+    that:
+      - eveng_guest_nat_bridge is match('^pnet[1-9]$')
+      - eveng_guest_nat_cidr is match('^[0-9.]+/[0-9]+$')
+      - eveng_guest_nat_subnet is match('^[0-9.]+/[0-9]+$')
+      - eveng_guest_nat_dhcp_start is match('^[0-9.]+$')
+      - eveng_guest_nat_dhcp_end is match('^[0-9.]+$')
+    fail_msg: Guest NAT requires a pnet1-pnet9 bridge and valid IPv4 settings.
+
+- name: Install guest NAT packages
+  ansible.builtin.apt:
+    name:
+      - bridge-utils
+      - dnsmasq
+      - iptables
+    state: present
+    update_cache: true
+
+- name: Install guest NAT network helper
+  ansible.builtin.template:
+    src: hybridops-eveng-guest-nat.sh.j2
+    dest: /usr/local/sbin/hybridops-eveng-guest-nat
+    owner: root
+    group: root
+    mode: "0755"
+  notify: restart eveng guest nat
+
+- name: Install guest NAT systemd unit
+  ansible.builtin.template:
+    src: hybridops-eveng-guest-nat.service.j2
+    dest: /etc/systemd/system/hybridops-eveng-guest-nat.service
+    owner: root
+    group: root
+    mode: "0644"
+  notify: restart eveng guest nat
+
+- name: Configure dnsmasq for EVE-NG guests
+  ansible.builtin.template:
+    src: eveng-guest-nat-dnsmasq.conf.j2
+    dest: /etc/dnsmasq.d/hybridops-eveng-guest-nat.conf
+    owner: root
+    group: root
+    mode: "0644"
+  notify: restart dnsmasq
+
+- name: Enable guest NAT service
+  ansible.builtin.systemd:
+    name: hybridops-eveng-guest-nat.service
+    enabled: true
+    state: started
+    daemon_reload: true
+
+- name: Flush guest NAT handlers before verification
+  ansible.builtin.meta: flush_handlers
+
+- name: Read guest NAT bridge state
+  ansible.builtin.command: "ip -4 -brief address show dev {{ eveng_guest_nat_bridge }}"
+  register: eveng_guest_nat_bridge_state
+  changed_when: false
+
+- name: Read guest NAT masquerade state
+  ansible.builtin.shell: |
+    set -euo pipefail
+    outbound_interface="$(ip -4 route show default | awk 'NR == 1 {print $5}')"
+    test -n "$outbound_interface"
+    iptables -t nat -C POSTROUTING -s "{{ eveng_guest_nat_subnet }}" \
+      -o "$outbound_interface" -j MASQUERADE
+  args:
+    executable: /bin/bash
+  register: eveng_guest_nat_masquerade_state
+  changed_when: false
+
+- name: Verify guest NAT readiness
+  ansible.builtin.assert:
+    that:
+      - eveng_guest_nat_cidr.split('/')[0] in eveng_guest_nat_bridge_state.stdout
+      - eveng_guest_nat_masquerade_state.rc == 0
+    fail_msg: EVE-NG guest NAT bridge or masquerade rule is not ready.
