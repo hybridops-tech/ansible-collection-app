@@ -1,0 +1,13 @@
+[Unit]
+Description=HybridOps EVE-NG guest NAT bridge
+Wants=network-online.target
+After=network-online.target
+Before=dnsmasq.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/hybridops-eveng-guest-nat
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target

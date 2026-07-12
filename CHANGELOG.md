@@ -7,7 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-- No unreleased changes yet.
+- Add optional DHCP, DNS and NAT egress for EVE-NG lab nodes.
 
 ## [0.1.6] - 2026-06-14
 
