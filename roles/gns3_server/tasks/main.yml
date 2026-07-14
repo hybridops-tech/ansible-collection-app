@@ -30,6 +30,7 @@
     owner: root
     group: root
     mode: "0644"
+  notify: Refresh GNS3 apt metadata
 
 - name: Configure the GNS3 stable repository
   ansible.builtin.deb822_repository:
@@ -47,10 +48,10 @@
     signed_by: /etc/apt/keyrings/gns3.asc
     state: present
     enabled: true
+  notify: Refresh GNS3 apt metadata
 
-- name: Refresh apt metadata for GNS3 repository
-  ansible.builtin.apt:
-    update_cache: true
+- name: Apply pending repository changes
+  ansible.builtin.meta: flush_handlers
 
 - name: Install GNS3 server packages
   ansible.builtin.apt:

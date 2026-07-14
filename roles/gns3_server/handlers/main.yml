@@ -1,4 +1,8 @@
 ---
+- name: Refresh GNS3 apt metadata
+  ansible.builtin.apt:
+    update_cache: true
+
 - name: Restart GNS3 server
   ansible.builtin.systemd:
     name: gns3server
