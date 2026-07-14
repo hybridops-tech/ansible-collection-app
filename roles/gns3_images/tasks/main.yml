@@ -6,12 +6,14 @@
       - gns3_images_port | int > 0
       - gns3_images_port | int < 65536
       - gns3_images_items is sequence
+      - gns3_images_items is not string
     fail_msg: "GNS3 image import requires valid API credentials and an image list."
   no_log: true
 
 - name: Validate GNS3 image declarations
   ansible.builtin.assert:
     that:
+      - item is mapping
       - item.name | default('') | length > 0
       - item.url | default('') | length > 0
       - item.filename | default('') | length > 0
@@ -24,6 +26,17 @@
   loop: "{{ gns3_images_items }}"
   loop_control:
     label: "{{ item.name | default('invalid image') }}"
+
+- name: Reject duplicate GNS3 image declarations
+  ansible.builtin.assert:
+    that:
+      - >-
+        (gns3_images_items | map(attribute='name') | list | unique | length)
+        == (gns3_images_items | length)
+      - >-
+        (gns3_images_items | map(attribute='filename') | list | unique | length)
+        == (gns3_images_items | length)
+    fail_msg: "GNS3 image names and filenames must be unique."
 
 - name: Ensure GNS3 QEMU image directory exists
   ansible.builtin.file:

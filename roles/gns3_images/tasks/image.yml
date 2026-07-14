@@ -22,6 +22,21 @@
       - gns3_image_existing_template | length <= 1
     fail_msg: "More than one GNS3 template is named {{ gns3_image.name }}."
 
+- name: Check declared QEMU executable
+  ansible.builtin.stat:
+    path: "{{ gns3_image_template.qemu_path }}"
+  register: gns3_image_qemu_binary
+
+- name: Validate declared QEMU executable
+  ansible.builtin.assert:
+    that:
+      - gns3_image_qemu_binary.stat.exists
+      - gns3_image_qemu_binary.stat.isreg
+      - gns3_image_qemu_binary.stat.executable
+    fail_msg: >-
+      GNS3 image {{ gns3_image.name }} requires an executable QEMU binary at
+      {{ gns3_image_template.qemu_path }}.
+
 - name: Validate an existing GNS3 image template
   ansible.builtin.assert:
     that:
@@ -30,8 +45,8 @@
       - gns3_image_existing_template[0].platform == gns3_image_template.platform
       - gns3_image_existing_template[0].qemu_path == gns3_image_template.qemu_path
     fail_msg: >-
-      Existing GNS3 template {{ gns3_image.name }} does not use the declared
-      image. Rename the declaration or resolve the template conflict.
+      Existing GNS3 template {{ gns3_image.name }} is incompatible with the
+      declared image. Rename the declaration or resolve the template conflict.
   when: gns3_image_existing_template | length == 1
 
 - name: Download and verify GNS3 image
