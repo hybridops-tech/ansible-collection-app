@@ -7,7 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-- No unreleased changes yet.
+### Added
+
+- Added checksum-verified GNS3 QEMU image installation and template
+  registration.
 
 ## [0.1.8] - 2026-07-14
 

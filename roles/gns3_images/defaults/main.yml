@@ -1,0 +1,22 @@
+---
+gns3_images_port: 3080
+gns3_images_username: "gns3"
+gns3_images_password: ""
+gns3_images_compute_id: "local"
+gns3_images_qemu_dir: "/var/lib/gns3/images/QEMU"
+gns3_images_owner: "gns3"
+gns3_images_group: "gns3"
+gns3_images_items: []
+
+gns3_images_template_defaults:
+  category: "guest"
+  symbol: ":/symbols/qemu_guest.svg"
+  platform: "x86_64"
+  qemu_path: "/usr/bin/qemu-system-x86_64"
+  ram: 512
+  cpus: 1
+  adapters: 1
+  adapter_type: "virtio-net-pci"
+  console_type: "telnet"
+  hda_disk_interface: "virtio"
+  linked_clone: true

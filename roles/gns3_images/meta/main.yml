@@ -1,0 +1,13 @@
+---
+galaxy_info:
+  role_name: gns3_images
+  author: HybridOps.Tech
+  description: Install verified GNS3 QEMU images and register usable templates.
+  license: MIT-0
+  min_ansible_version: "2.15"
+  platforms:
+    - name: Ubuntu
+      versions:
+        - jammy
+        - noble
+dependencies: []

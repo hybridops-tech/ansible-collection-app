@@ -1,0 +1,68 @@
+---
+- name: Validate GNS3 image inputs
+  ansible.builtin.assert:
+    that:
+      - gns3_images_password | length > 0
+      - gns3_images_port | int > 0
+      - gns3_images_port | int < 65536
+      - gns3_images_items is sequence
+    fail_msg: "GNS3 image import requires valid API credentials and an image list."
+  no_log: true
+
+- name: Validate GNS3 image declarations
+  ansible.builtin.assert:
+    that:
+      - item.name | default('') | length > 0
+      - item.url | default('') | length > 0
+      - item.filename | default('') | length > 0
+      - (item.filename | basename) == item.filename
+      - item.checksum | default('') is match('^sha256:[0-9a-fA-F]{64}$')
+      - item.disk_type | default('hda') in ['hda', 'cdrom']
+    fail_msg: >-
+      Each GNS3 image requires a name, URL, safe filename, SHA-256 checksum,
+      and disk_type of hda or cdrom.
+  loop: "{{ gns3_images_items }}"
+  loop_control:
+    label: "{{ item.name | default('invalid image') }}"
+
+- name: Ensure GNS3 QEMU image directory exists
+  ansible.builtin.file:
+    path: "{{ gns3_images_qemu_dir }}"
+    state: directory
+    owner: "{{ gns3_images_owner }}"
+    group: "{{ gns3_images_group }}"
+    mode: "0750"
+
+- name: Read registered GNS3 templates
+  ansible.builtin.uri:
+    url: "http://127.0.0.1:{{ gns3_images_port }}/v2/templates"
+    url_username: "{{ gns3_images_username }}"
+    url_password: "{{ gns3_images_password }}"
+    force_basic_auth: true
+    return_content: true
+    status_code: 200
+  register: gns3_images_existing_templates
+  no_log: true
+
+- name: Initialise GNS3 image results
+  ansible.builtin.set_fact:
+    gns3_images_results:
+      status: ready
+      requested_count: "{{ gns3_images_items | length }}"
+      images: []
+
+- name: Install declared GNS3 images
+  ansible.builtin.include_tasks: image.yml
+  loop: "{{ gns3_images_items }}"
+  loop_control:
+    loop_var: gns3_image
+    label: "{{ gns3_image.name }}"
+
+- name: Publish GNS3 image results
+  ansible.builtin.set_fact:
+    gns3_images_results: >-
+      {{ gns3_images_results | combine({
+        'installed_count': gns3_images_results.images | length,
+        'template_names': gns3_images_results.images
+          | map(attribute='template_name') | list
+      }) }}

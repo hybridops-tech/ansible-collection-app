@@ -1,0 +1,12 @@
+---
+- name: Smoke test GNS3 image role
+  hosts: localhost
+  gather_facts: false
+  tasks:
+    - name: Validate role files
+      ansible.builtin.assert:
+        that:
+          - lookup('ansible.builtin.file', role_path + '/defaults/main.yml') | length > 0
+          - lookup('ansible.builtin.file', role_path + '/tasks/main.yml') | length > 0
+      vars:
+        role_path: "{{ playbook_dir | dirname }}"
