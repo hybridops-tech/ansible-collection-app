@@ -59,10 +59,12 @@
 
 - name: Initialise GNS3 image results
   ansible.builtin.set_fact:
-    gns3_images_results:
-      status: ready
-      requested_count: "{{ gns3_images_items | length }}"
-      images: []
+    gns3_images_results: >-
+      {{ {
+        'status': 'ready',
+        'requested_count': gns3_images_items | length,
+        'images': []
+      } }}
 
 - name: Install declared GNS3 images
   ansible.builtin.include_tasks: image.yml
