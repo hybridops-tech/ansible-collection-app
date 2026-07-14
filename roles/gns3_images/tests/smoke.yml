@@ -6,7 +6,7 @@
     - name: Validate role files
       ansible.builtin.assert:
         that:
-          - lookup('ansible.builtin.file', role_path + '/defaults/main.yml') | length > 0
-          - lookup('ansible.builtin.file', role_path + '/tasks/main.yml') | length > 0
+          - lookup('ansible.builtin.file', role_dir + '/defaults/main.yml') | length > 0
+          - lookup('ansible.builtin.file', role_dir + '/tasks/main.yml') | length > 0
       vars:
-        role_path: "{{ playbook_dir | dirname }}"
+        role_dir: "{{ playbook_dir | dirname }}"
