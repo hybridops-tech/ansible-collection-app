@@ -12,6 +12,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Added checksum-verified GNS3 QEMU image installation and template
   registration.
 
+## [0.1.11] - 2026-07-15
+
+### Added
+
+- Added an idempotent GNS3 starter topology using built-in NAT, Ethernet
+  switch and VPCS nodes.
+
+## [0.1.10] - 2026-07-15
+
+### Changed
+
+- Allowed the GNS3 service to create NAT TAP interfaces using scoped network
+  capabilities.
+
+## [0.1.9] - 2026-07-15
+
+### Added
+
+- Added authenticated GNS3 server health checks with an optional disposable
+  VPCS lifecycle.
+
 ## [0.1.8] - 2026-07-14
 
 ### Added
