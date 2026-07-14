@@ -1,0 +1,18 @@
+---
+gns3_healthcheck_port: 3080
+gns3_healthcheck_username: "gns3"
+gns3_healthcheck_password: ""
+gns3_healthcheck_service: "gns3server"
+gns3_healthcheck_require_kvm: true
+gns3_healthcheck_require_local_compute: true
+gns3_healthcheck_deep: false
+gns3_healthcheck_commands:
+  - gns3server
+  - qemu-system-x86_64
+  - dynamips
+  - ubridge
+  - vpcs
+gns3_healthcheck_data_dirs:
+  - /var/lib/gns3
+  - /var/lib/gns3/images
+  - /var/lib/gns3/projects

@@ -1,0 +1,16 @@
+---
+- name: Verify GNS3 health-check role inputs
+  hosts: localhost
+  gather_facts: false
+  tasks:
+    - name: Load role defaults
+      ansible.builtin.include_vars:
+        file: ../defaults/main.yml
+
+    - name: Check safe defaults
+      ansible.builtin.assert:
+        that:
+          - gns3_healthcheck_port == 3080
+          - gns3_healthcheck_require_kvm | bool
+          - not (gns3_healthcheck_deep | bool)
+          - "'vpcs' in gns3_healthcheck_commands"

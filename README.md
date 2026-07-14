@@ -17,6 +17,7 @@ Role-level variables and assumptions are documented in each role's `README.md`. 
 | Role | Purpose |
 |------|---------|
 | `eveng` | Install and configure EVE-NG. |
+| `gns3_healthcheck` | Validate a GNS3 server and its local compute runtime. |
 | `gns3_server` | Install and configure a remote GNS3 server. |
 | `jenkins_agents_docker` | Configure Docker-based Jenkins agents. |
 | `jenkins_controller` | Install and configure Jenkins controller. |

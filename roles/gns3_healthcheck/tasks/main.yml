@@ -1,0 +1,220 @@
+---
+- name: Validate GNS3 health-check inputs
+  ansible.builtin.assert:
+    that:
+      - gns3_healthcheck_password | length > 0
+      - gns3_healthcheck_port | int > 0
+      - gns3_healthcheck_port | int < 65536
+    fail_msg: "GNS3 health checks require a password and a valid API port."
+  no_log: true
+
+- name: Read service state
+  ansible.builtin.service_facts:
+
+- name: Check GNS3 service
+  ansible.builtin.assert:
+    that:
+      - ansible_facts.services[gns3_healthcheck_service ~ '.service'] is defined
+      - ansible_facts.services[gns3_healthcheck_service ~ '.service'].state == 'running'
+    fail_msg: "The GNS3 server service is not running."
+
+- name: Check required runtime commands
+  ansible.builtin.command:
+    argv:
+      - /usr/bin/env
+      - which
+      - "{{ item }}"
+  loop: "{{ gns3_healthcheck_commands }}"
+  changed_when: false
+
+- name: Read KVM device state
+  ansible.builtin.stat:
+    path: /dev/kvm
+  register: gns3_healthcheck_kvm
+  when: gns3_healthcheck_require_kvm | bool
+
+- name: Check nested KVM
+  ansible.builtin.assert:
+    that:
+      - gns3_healthcheck_kvm.stat.exists
+      - gns3_healthcheck_kvm.stat.ischr
+    fail_msg: "Nested KVM is required but /dev/kvm is not available."
+  when: gns3_healthcheck_require_kvm | bool
+
+- name: Check GNS3 data directories
+  ansible.builtin.command:
+    argv:
+      - /usr/sbin/runuser
+      - -u
+      - gns3
+      - --
+      - /usr/bin/test
+      - -w
+      - "{{ item }}"
+  loop: "{{ gns3_healthcheck_data_dirs }}"
+  changed_when: false
+
+- name: Check authenticated GNS3 API
+  ansible.builtin.uri:
+    url: "http://127.0.0.1:{{ gns3_healthcheck_port }}/v2/version"
+    url_username: "{{ gns3_healthcheck_username }}"
+    url_password: "{{ gns3_healthcheck_password }}"
+    force_basic_auth: true
+    return_content: true
+    status_code: 200
+  register: gns3_healthcheck_version
+  no_log: true
+
+- name: Check unauthenticated API rejection
+  ansible.builtin.uri:
+    url: "http://127.0.0.1:{{ gns3_healthcheck_port }}/v2/version"
+    status_code: 401
+  no_log: true
+
+- name: Read GNS3 compute state
+  ansible.builtin.uri:
+    url: "http://127.0.0.1:{{ gns3_healthcheck_port }}/v2/computes"
+    url_username: "{{ gns3_healthcheck_username }}"
+    url_password: "{{ gns3_healthcheck_password }}"
+    force_basic_auth: true
+    return_content: true
+    status_code: 200
+  register: gns3_healthcheck_computes
+  no_log: true
+
+- name: Check local GNS3 compute
+  ansible.builtin.assert:
+    that:
+      - >-
+        gns3_healthcheck_computes.json
+        | selectattr('compute_id', 'equalto', 'local')
+        | selectattr('connected', 'equalto', true)
+        | list
+        | length == 1
+    fail_msg: "The local GNS3 compute is not connected."
+  when: gns3_healthcheck_require_local_compute | bool
+
+- name: Run disposable VPCS lifecycle
+  when: gns3_healthcheck_deep | bool
+  block:
+    - name: Create disposable GNS3 project
+      ansible.builtin.uri:
+        url: "http://127.0.0.1:{{ gns3_healthcheck_port }}/v2/projects"
+        method: POST
+        url_username: "{{ gns3_healthcheck_username }}"
+        url_password: "{{ gns3_healthcheck_password }}"
+        force_basic_auth: true
+        body_format: json
+        body:
+          name: "hyops-healthcheck"
+        status_code: 201
+      register: gns3_healthcheck_project
+      no_log: true
+
+    - name: Create disposable VPCS node
+      ansible.builtin.uri:
+        url: >-
+          http://127.0.0.1:{{ gns3_healthcheck_port }}/v2/projects/{{
+          gns3_healthcheck_project.json.project_id }}/nodes
+        method: POST
+        url_username: "{{ gns3_healthcheck_username }}"
+        url_password: "{{ gns3_healthcheck_password }}"
+        force_basic_auth: true
+        body_format: json
+        body:
+          compute_id: local
+          name: vpcs-healthcheck
+          node_type: vpcs
+        status_code: 201
+      register: gns3_healthcheck_node
+      no_log: true
+
+    - name: Start disposable VPCS node
+      ansible.builtin.uri:
+        url: >-
+          http://127.0.0.1:{{ gns3_healthcheck_port }}/v2/projects/{{
+          gns3_healthcheck_project.json.project_id }}/nodes/{{
+          gns3_healthcheck_node.json.node_id }}/start
+        method: POST
+        url_username: "{{ gns3_healthcheck_username }}"
+        url_password: "{{ gns3_healthcheck_password }}"
+        force_basic_auth: true
+        status_code: 200
+      no_log: true
+
+    - name: Read disposable VPCS state
+      ansible.builtin.uri:
+        url: >-
+          http://127.0.0.1:{{ gns3_healthcheck_port }}/v2/projects/{{
+          gns3_healthcheck_project.json.project_id }}/nodes/{{
+          gns3_healthcheck_node.json.node_id }}
+        url_username: "{{ gns3_healthcheck_username }}"
+        url_password: "{{ gns3_healthcheck_password }}"
+        force_basic_auth: true
+        return_content: true
+        status_code: 200
+      register: gns3_healthcheck_node_state
+      no_log: true
+
+    - name: Check disposable VPCS state
+      ansible.builtin.assert:
+        that:
+          - gns3_healthcheck_node_state.json.status == 'started'
+          - gns3_healthcheck_node_state.json.console | int > 0
+        fail_msg: "The disposable VPCS node did not start correctly."
+
+    - name: Stop disposable VPCS node
+      ansible.builtin.uri:
+        url: >-
+          http://127.0.0.1:{{ gns3_healthcheck_port }}/v2/projects/{{
+          gns3_healthcheck_project.json.project_id }}/nodes/{{
+          gns3_healthcheck_node.json.node_id }}/stop
+        method: POST
+        url_username: "{{ gns3_healthcheck_username }}"
+        url_password: "{{ gns3_healthcheck_password }}"
+        force_basic_auth: true
+        status_code: 200
+      no_log: true
+
+    - name: Read stopped VPCS state
+      ansible.builtin.uri:
+        url: >-
+          http://127.0.0.1:{{ gns3_healthcheck_port }}/v2/projects/{{
+          gns3_healthcheck_project.json.project_id }}/nodes/{{
+          gns3_healthcheck_node.json.node_id }}
+        url_username: "{{ gns3_healthcheck_username }}"
+        url_password: "{{ gns3_healthcheck_password }}"
+        force_basic_auth: true
+        return_content: true
+        status_code: 200
+      register: gns3_healthcheck_stopped_node
+      no_log: true
+
+    - name: Check stopped VPCS state
+      ansible.builtin.assert:
+        that:
+          - gns3_healthcheck_stopped_node.json.status == 'stopped'
+        fail_msg: "The disposable VPCS node did not stop correctly."
+
+  always:
+    - name: Remove disposable GNS3 project
+      ansible.builtin.uri:
+        url: >-
+          http://127.0.0.1:{{ gns3_healthcheck_port }}/v2/projects/{{
+          gns3_healthcheck_project.json.project_id }}
+        method: DELETE
+        url_username: "{{ gns3_healthcheck_username }}"
+        url_password: "{{ gns3_healthcheck_password }}"
+        force_basic_auth: true
+        status_code: 204
+      when: gns3_healthcheck_project is defined
+      no_log: true
+
+- name: Publish GNS3 health result
+  ansible.builtin.set_fact:
+    gns3_healthcheck_results:
+      status: ready
+      version: "{{ gns3_healthcheck_version.json.version }}"
+      local_compute: connected
+      kvm: "{{ 'ready' if gns3_healthcheck_require_kvm | bool else 'not-required' }}"
+      deep_check: "{{ 'passed' if gns3_healthcheck_deep | bool else 'not-run' }}"
