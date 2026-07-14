@@ -1,0 +1,35 @@
+---
+gns3_starter_lab_port: 3080
+gns3_starter_lab_username: "gns3"
+gns3_starter_lab_password: ""
+gns3_starter_lab_project_name: "HybridOps Starter Lab"
+gns3_starter_lab_nodes:
+  - name: "Internet NAT"
+    node_type: "nat"
+    x: -300
+    y: 0
+  - name: "Access Switch"
+    node_type: "ethernet_switch"
+    x: 0
+    y: 0
+  - name: "Student PC 1"
+    node_type: "vpcs"
+    x: 300
+    y: -100
+  - name: "Student PC 2"
+    node_type: "vpcs"
+    x: 300
+    y: 100
+gns3_starter_lab_links:
+  - left_node: 0
+    left_port: 0
+    right_node: 1
+    right_port: 0
+  - left_node: 1
+    left_port: 1
+    right_node: 2
+    right_port: 0
+  - left_node: 1
+    left_port: 2
+    right_node: 3
+    right_port: 0

@@ -1,0 +1,19 @@
+---
+- name: Verify GNS3 starter-lab defaults
+  hosts: localhost
+  gather_facts: false
+  tasks:
+    - name: Load role defaults
+      ansible.builtin.include_vars:
+        file: ../defaults/main.yml
+
+    - name: Check built-in topology
+      ansible.builtin.assert:
+        that:
+          - gns3_starter_lab_nodes | length == 4
+          - gns3_starter_lab_links | length == 3
+          - >-
+            gns3_starter_lab_nodes
+            | selectattr('node_type', 'equalto', 'vpcs')
+            | list
+            | length == 2
