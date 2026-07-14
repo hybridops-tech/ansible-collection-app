@@ -9,6 +9,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - No unreleased changes yet.
 
+## [0.1.8] - 2026-07-14
+
+### Added
+
+- Added an authenticated GNS3 server role for dedicated Ubuntu hosts.
+
 ## [0.1.7] - 2026-07-12
 
 ### Added

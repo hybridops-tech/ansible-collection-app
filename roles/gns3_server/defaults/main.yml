@@ -1,0 +1,19 @@
+---
+gns3_server_bind_address: "0.0.0.0"
+gns3_server_port: 3080
+gns3_server_username: "gns3"
+gns3_server_password: ""
+gns3_server_user: "gns3"
+gns3_server_group: "gns3"
+gns3_server_home: "/var/lib/gns3"
+gns3_server_config_dir: "/etc/gns3"
+gns3_server_data_dir: "/var/lib/gns3"
+gns3_server_allowed_interfaces:
+  - virbr0
+gns3_server_enable_kvm: true
+gns3_server_require_kvm: false
+gns3_server_install_emulators: true
+gns3_server_api_wait_timeout: 60
+gns3_server_package_versions:
+  jammy: "2.2.55~jammy2"
+  noble: "2.2.59~noble1"

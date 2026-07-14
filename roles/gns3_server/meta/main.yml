@@ -1,0 +1,18 @@
+---
+galaxy_info:
+  author: HybridOps.Tech
+  description: Install and configure a remote GNS3 server
+  license: MIT
+  min_ansible_version: "2.15"
+  platforms:
+    - name: Ubuntu
+      versions:
+        - jammy
+        - noble
+  galaxy_tags:
+    - networking
+    - emulation
+    - gns3
+    - virtualization
+    - lab
+dependencies: []

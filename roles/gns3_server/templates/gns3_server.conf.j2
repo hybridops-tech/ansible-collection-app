@@ -1,0 +1,16 @@
+[Server]
+host = {{ gns3_server_bind_address }}
+port = {{ gns3_server_port }}
+auth = True
+user = {{ gns3_server_username }}
+password = {{ gns3_server_password }}
+images_path = {{ gns3_server_data_dir }}/images
+projects_path = {{ gns3_server_data_dir }}/projects
+appliances_path = {{ gns3_server_data_dir }}/appliances
+symbols_path = {{ gns3_server_data_dir }}/symbols
+allowed_interfaces = {{ gns3_server_allowed_interfaces | join(',') }}
+report_errors = False
+
+[Qemu]
+enable_kvm = {{ gns3_server_enable_kvm | bool }}
+require_kvm = {{ gns3_server_require_kvm | bool }}

@@ -2,7 +2,7 @@
 
 Application and platform service roles for HybridOps.
 
-This collection contains the service roles that sit above the shared platform primitives in `hybridops.common`: NetBox, EVE-NG, pgBackRest repository services, and Jenkins controller or agent delivery.
+This collection contains the service roles that sit above the shared platform primitives in `hybridops.common`: NetBox, EVE-NG, GNS3, pgBackRest repository services, and Jenkins controller or agent delivery.
 
 Role-level variables and assumptions are documented in each role's `README.md`. Broader operator guidance lives at [docs.hybridops.tech](https://docs.hybridops.tech).
 
@@ -17,6 +17,7 @@ Role-level variables and assumptions are documented in each role's `README.md`. 
 | Role | Purpose |
 |------|---------|
 | `eveng` | Install and configure EVE-NG. |
+| `gns3_server` | Install and configure a remote GNS3 server. |
 | `jenkins_agents_docker` | Configure Docker-based Jenkins agents. |
 | `jenkins_controller` | Install and configure Jenkins controller. |
 | `netbox_service` | Install and operate NetBox service. |

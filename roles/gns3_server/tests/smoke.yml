@@ -1,0 +1,10 @@
+---
+- name: GNS3 server role smoke test
+  hosts: gns3_servers
+  become: true
+  gather_facts: true
+
+  roles:
+    - role: hybridops.app.gns3_server
+      vars:
+        gns3_server_password: "test-only-password"
