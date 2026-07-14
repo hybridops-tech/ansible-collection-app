@@ -13,8 +13,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- Added structured GNS3 server health checks with an optional disposable VPCS
-  lifecycle.
+- Added authenticated GNS3 server health checks with an optional disposable
+  VPCS lifecycle.
 
 ## [0.1.8] - 2026-07-14
 
