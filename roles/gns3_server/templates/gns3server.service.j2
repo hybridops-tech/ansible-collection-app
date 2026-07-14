@@ -10,6 +10,8 @@ Group={{ gns3_server_group }}
 ExecStart=/usr/bin/gns3server --config {{ gns3_server_config_dir }}/gns3_server.conf
 Restart=on-failure
 RestartSec=5
+AmbientCapabilities=CAP_NET_ADMIN CAP_NET_RAW
+CapabilityBoundingSet=CAP_NET_ADMIN CAP_NET_RAW
 NoNewPrivileges=true
 PrivateTmp=true
 
