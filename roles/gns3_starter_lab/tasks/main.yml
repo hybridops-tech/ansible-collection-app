@@ -1,0 +1,171 @@
+---
+- name: Validate GNS3 starter-lab inputs
+  ansible.builtin.assert:
+    that:
+      - gns3_starter_lab_password | length > 0
+      - gns3_starter_lab_project_name | length > 0
+      - gns3_starter_lab_port | int > 0
+      - gns3_starter_lab_port | int < 65536
+      - gns3_starter_lab_nodes | length > 0
+    fail_msg: "The GNS3 starter lab requires valid API credentials and a project name."
+  no_log: true
+
+- name: Read GNS3 projects
+  ansible.builtin.uri:
+    url: "http://127.0.0.1:{{ gns3_starter_lab_port }}/v2/projects"
+    url_username: "{{ gns3_starter_lab_username }}"
+    url_password: "{{ gns3_starter_lab_password }}"
+    force_basic_auth: true
+    return_content: true
+    status_code: 200
+  register: gns3_starter_lab_projects
+  no_log: true
+
+- name: Select existing starter project
+  ansible.builtin.set_fact:
+    gns3_starter_lab_existing: >-
+      {{ gns3_starter_lab_projects.json
+         | selectattr('name', 'equalto', gns3_starter_lab_project_name)
+         | list }}
+  no_log: true
+
+- name: Check for duplicate starter projects
+  ansible.builtin.assert:
+    that:
+      - gns3_starter_lab_existing | length <= 1
+    fail_msg: "More than one GNS3 project uses the requested starter-lab name."
+
+- name: Build missing starter project
+  when: gns3_starter_lab_existing | length == 0
+  block:
+    - name: Create GNS3 starter project
+      ansible.builtin.uri:
+        url: "http://127.0.0.1:{{ gns3_starter_lab_port }}/v2/projects"
+        method: POST
+        url_username: "{{ gns3_starter_lab_username }}"
+        url_password: "{{ gns3_starter_lab_password }}"
+        force_basic_auth: true
+        body_format: json
+        body:
+          name: "{{ gns3_starter_lab_project_name }}"
+        status_code: 201
+      register: gns3_starter_lab_created_project
+      no_log: true
+
+    - name: Create GNS3 starter nodes
+      ansible.builtin.uri:
+        url: >-
+          http://127.0.0.1:{{ gns3_starter_lab_port }}/v2/projects/{{
+          gns3_starter_lab_created_project.json.project_id }}/nodes
+        method: POST
+        url_username: "{{ gns3_starter_lab_username }}"
+        url_password: "{{ gns3_starter_lab_password }}"
+        force_basic_auth: true
+        body_format: json
+        body: >-
+          {{ {
+            'compute_id': 'local',
+            'name': item.name,
+            'node_type': item.node_type,
+            'x': item.x | int,
+            'y': item.y | int
+          } }}
+        status_code: 201
+      loop: "{{ gns3_starter_lab_nodes }}"
+      register: gns3_starter_lab_created_nodes
+      no_log: true
+
+    - name: Create GNS3 starter links
+      ansible.builtin.uri:
+        url: >-
+          http://127.0.0.1:{{ gns3_starter_lab_port }}/v2/projects/{{
+          gns3_starter_lab_created_project.json.project_id }}/links
+        method: POST
+        url_username: "{{ gns3_starter_lab_username }}"
+        url_password: "{{ gns3_starter_lab_password }}"
+        force_basic_auth: true
+        body_format: json
+        body: >-
+          {{ {
+            'nodes': [
+              {
+                'node_id': gns3_starter_lab_created_nodes.results[
+                  item.left_node | int].json.node_id,
+                'adapter_number': 0,
+                'port_number': item.left_port | int
+              },
+              {
+                'node_id': gns3_starter_lab_created_nodes.results[
+                  item.right_node | int].json.node_id,
+                'adapter_number': 0,
+                'port_number': item.right_port | int
+              }
+            ]
+          } }}
+        status_code: 201
+      loop: "{{ gns3_starter_lab_links }}"
+      no_log: true
+
+  rescue:
+    - name: Remove partial GNS3 starter project
+      ansible.builtin.uri:
+        url: >-
+          http://127.0.0.1:{{ gns3_starter_lab_port }}/v2/projects/{{
+          gns3_starter_lab_created_project.json.project_id }}
+        method: DELETE
+        url_username: "{{ gns3_starter_lab_username }}"
+        url_password: "{{ gns3_starter_lab_password }}"
+        force_basic_auth: true
+        status_code: 204
+      when: gns3_starter_lab_created_project is defined
+      no_log: true
+
+    - name: Report starter-lab construction failure
+      ansible.builtin.fail:
+        msg: "GNS3 starter-lab construction failed; the partial project was removed."
+
+- name: Resolve starter project identifier
+  ansible.builtin.set_fact:
+    gns3_starter_lab_project_id: >-
+      {{ gns3_starter_lab_created_project.json.project_id
+         if gns3_starter_lab_existing | length == 0
+         else gns3_starter_lab_existing[0].project_id }}
+    gns3_starter_lab_created: >-
+      {{ gns3_starter_lab_existing | length == 0 }}
+  no_log: true
+
+- name: Read starter project nodes
+  ansible.builtin.uri:
+    url: >-
+      http://127.0.0.1:{{ gns3_starter_lab_port }}/v2/projects/{{
+      gns3_starter_lab_project_id }}/nodes
+    url_username: "{{ gns3_starter_lab_username }}"
+    url_password: "{{ gns3_starter_lab_password }}"
+    force_basic_auth: true
+    return_content: true
+    status_code: 200
+  register: gns3_starter_lab_final_nodes
+  no_log: true
+
+- name: Read starter project links
+  ansible.builtin.uri:
+    url: >-
+      http://127.0.0.1:{{ gns3_starter_lab_port }}/v2/projects/{{
+      gns3_starter_lab_project_id }}/links
+    url_username: "{{ gns3_starter_lab_username }}"
+    url_password: "{{ gns3_starter_lab_password }}"
+    force_basic_auth: true
+    return_content: true
+    status_code: 200
+  register: gns3_starter_lab_final_links
+  no_log: true
+
+- name: Publish GNS3 starter-lab result
+  ansible.builtin.set_fact:
+    gns3_starter_lab_results:
+      status: ready
+      project_name: "{{ gns3_starter_lab_project_name }}"
+      project_id: "{{ gns3_starter_lab_project_id }}"
+      created: "{{ gns3_starter_lab_created | bool }}"
+      node_count: "{{ gns3_starter_lab_final_nodes.json | length }}"
+      link_count: "{{ gns3_starter_lab_final_links.json | length }}"
