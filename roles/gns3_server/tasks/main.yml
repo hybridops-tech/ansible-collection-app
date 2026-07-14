@@ -1,0 +1,150 @@
+---
+- name: Validate GNS3 server host
+  ansible.builtin.assert:
+    that:
+      - ansible_distribution == "Ubuntu"
+      - ansible_distribution_version is version('22.04', '>=')
+      - ansible_distribution_version is version('24.04', '<=')
+      - ansible_architecture in ['x86_64', 'amd64']
+      - ansible_distribution_release in gns3_server_package_versions
+      - gns3_server_password | length > 0
+      - gns3_server_port | int > 0
+      - gns3_server_port | int < 65536
+    fail_msg: >-
+      GNS3 server requires Ubuntu 22.04 or 24.04 on x86_64 and a non-empty
+      gns3_server_password.
+
+- name: Install repository prerequisites
+  ansible.builtin.apt:
+    name:
+      - ca-certificates
+      - python3-debian
+    state: present
+    update_cache: true
+
+- name: Install GNS3 repository signing key
+  ansible.builtin.get_url:
+    url: >-
+      https://keyserver.ubuntu.com/pks/lookup?op=get&search=0xB83AAABFFBD82D21B543C8EA86C22C2EC6A24D7F
+    dest: /etc/apt/keyrings/gns3.asc
+    owner: root
+    group: root
+    mode: "0644"
+
+- name: Configure the GNS3 stable repository
+  ansible.builtin.deb822_repository:
+    name: gns3
+    types:
+      - deb
+    uris:
+      - https://ppa.launchpadcontent.net/gns3/ppa/ubuntu
+    suites:
+      - "{{ ansible_distribution_release }}"
+    components:
+      - main
+    architectures:
+      - amd64
+    signed_by: /etc/apt/keyrings/gns3.asc
+    state: present
+    enabled: true
+
+- name: Refresh apt metadata for GNS3 repository
+  ansible.builtin.apt:
+    update_cache: true
+
+- name: Install GNS3 server packages
+  ansible.builtin.apt:
+    name: >-
+      {{ ['gns3-server=' ~ gns3_server_package_versions[ansible_distribution_release]] +
+         (['dynamips', 'libvirt-daemon-system', 'qemu-kvm', 'qemu-utils',
+           'ubridge', 'vpcs'] if gns3_server_install_emulators | bool else []) }}
+    state: present
+    allow_downgrade: true
+  environment:
+    DEBIAN_FRONTEND: noninteractive
+
+- name: Create GNS3 service group
+  ansible.builtin.group:
+    name: "{{ gns3_server_group }}"
+    system: true
+
+- name: Read available system groups
+  ansible.builtin.getent:
+    database: group
+
+- name: Create GNS3 service account
+  ansible.builtin.user:
+    name: "{{ gns3_server_user }}"
+    group: "{{ gns3_server_group }}"
+    groups: >-
+      {{ ['libvirt', 'kvm', 'ubridge']
+         | select('in', ansible_facts.getent_group | default({}))
+         | join(',') }}
+    system: true
+    append: true
+    create_home: true
+    home: "{{ gns3_server_home }}"
+    shell: /usr/sbin/nologin
+
+- name: Create GNS3 directories
+  ansible.builtin.file:
+    path: "{{ item.path }}"
+    state: directory
+    owner: "{{ gns3_server_user }}"
+    group: "{{ gns3_server_group }}"
+    mode: "{{ item.mode }}"
+  loop:
+    - path: "{{ gns3_server_config_dir }}"
+      mode: "0750"
+    - path: "{{ gns3_server_data_dir }}"
+      mode: "0750"
+    - path: "{{ gns3_server_data_dir }}/images"
+      mode: "0750"
+    - path: "{{ gns3_server_data_dir }}/projects"
+      mode: "0750"
+    - path: "{{ gns3_server_data_dir }}/appliances"
+      mode: "0750"
+    - path: "{{ gns3_server_data_dir }}/symbols"
+      mode: "0750"
+
+- name: Configure GNS3 server
+  ansible.builtin.template:
+    src: gns3_server.conf.j2
+    dest: "{{ gns3_server_config_dir }}/gns3_server.conf"
+    owner: "{{ gns3_server_user }}"
+    group: "{{ gns3_server_group }}"
+    mode: "0600"
+  no_log: true
+  notify: Restart GNS3 server
+
+- name: Install GNS3 systemd service
+  ansible.builtin.template:
+    src: gns3server.service.j2
+    dest: /etc/systemd/system/gns3server.service
+    owner: root
+    group: root
+    mode: "0644"
+  notify: Restart GNS3 server
+
+- name: Start GNS3 server
+  ansible.builtin.systemd:
+    name: gns3server
+    state: started
+    enabled: true
+    daemon_reload: true
+
+- name: Apply pending GNS3 service changes
+  ansible.builtin.meta: flush_handlers
+
+- name: Wait for GNS3 API
+  ansible.builtin.uri:
+    url: "http://127.0.0.1:{{ gns3_server_port }}/v2/version"
+    url_username: "{{ gns3_server_username }}"
+    url_password: "{{ gns3_server_password }}"
+    force_basic_auth: true
+    status_code: 200
+  register: gns3_server_api
+  retries: "{{ gns3_server_api_wait_timeout | int // 3 }}"
+  delay: 3
+  until: gns3_server_api.status == 200
+  no_log: true

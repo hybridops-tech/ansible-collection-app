@@ -1,0 +1,17 @@
+[Unit]
+Description=GNS3 server
+Wants=network-online.target
+After=network-online.target libvirtd.service
+
+[Service]
+Type=simple
+User={{ gns3_server_user }}
+Group={{ gns3_server_group }}
+ExecStart=/usr/bin/gns3server --config {{ gns3_server_config_dir }}/gns3_server.conf
+Restart=on-failure
+RestartSec=5
+NoNewPrivileges=true
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target
