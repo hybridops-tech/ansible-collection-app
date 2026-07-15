@@ -9,6 +9,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - No unreleased changes yet.
 
+## [0.2.7] - 2026-07-15
+
+### Changed
+
+- Published the current application roles as the 0.2.7 collection release.
+
 ## [0.1.12] - 2026-07-15
 
 ### Added
