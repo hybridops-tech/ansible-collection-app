@@ -9,41 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - No unreleased changes yet.
 
-## [0.1.12] - 2026-07-15
-
-### Added
-
-- Added checksum-verified GNS3 QEMU image installation and template
-  registration.
-
-## [0.1.11] - 2026-07-15
-
-### Added
-
-- Added an idempotent GNS3 starter topology using built-in NAT, Ethernet
-  switch and VPCS nodes.
-
-## [0.1.10] - 2026-07-15
-
-### Changed
-
-- Allowed the GNS3 service to create NAT TAP interfaces using scoped network
-  capabilities.
-
-## [0.1.9] - 2026-07-15
-
-### Added
-
-- Added authenticated GNS3 server health checks with an optional disposable
-  VPCS lifecycle.
-
-## [0.1.8] - 2026-07-14
-
-### Added
-
-- Added an authenticated GNS3 server role for dedicated Ubuntu hosts.
-
-## [0.1.7] - 2026-07-12
+## [0.1.7] - 2026-07-15
 
 ### Added
 
@@ -51,9 +17,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   through a dedicated private bridge.
 - Added persistent service configuration and readiness checks for the guest
   bridge and scoped masquerade rule.
+- Added an authenticated GNS3 server role for dedicated Ubuntu hosts.
+- Added authenticated GNS3 server health checks with an optional disposable
+  VPCS lifecycle.
+- Added an idempotent GNS3 starter topology using built-in NAT, Ethernet
+  switch and VPCS nodes.
+- Added checksum-verified GNS3 QEMU image installation and template
+  registration.
 
 ### Changed
 
+- Allowed the GNS3 service to create NAT TAP interfaces using scoped network
+  capabilities.
 - Require `hybridops.helper` 0.1.6 or later so the guest-egress release is
   installed with the corrected EVE-NG image lifecycle.
 
