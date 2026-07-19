@@ -1,0 +1,36 @@
+---
+# purpose: Export or restore portable GNS3 lab state
+# maintainer: HybridOps.Tech
+
+- name: Resolve GNS3 lab archive path
+  ansible.builtin.set_fact:
+    _gns3_lab_archive_path: >-
+      {{
+        gns3_lab_archive_resolved_path
+        if gns3_lab_archive_resolved_path | string | trim | length > 0
+        else gns3_lab_archive_path
+      }}
+
+- name: Validate GNS3 lab archive settings
+  ansible.builtin.assert:
+    that:
+      - gns3_lab_archive_action in ['export', 'restore']
+      - _gns3_lab_archive_path | string | trim | length > 0
+      - _gns3_lab_archive_path is match('^/')
+      - gns3_lab_archive_data_root is match('^/')
+      - gns3_lab_archive_remote_dir is match('^/')
+      - gns3_lab_archive_include_images is boolean
+      - gns3_lab_archive_overwrite is boolean
+      - gns3_lab_archive_manage_service is boolean
+      - not gns3_lab_archive_manage_service or gns3_lab_archive_password | length > 0
+      - gns3_lab_archive_port | int > 0
+      - gns3_lab_archive_port | int < 65536
+    fail_msg: "GNS3 lab archive settings are invalid"
+
+- name: Export GNS3 lab state
+  ansible.builtin.include_tasks: export.yml
+  when: gns3_lab_archive_action == 'export'
+
+- name: Restore GNS3 lab state
+  ansible.builtin.include_tasks: restore.yml
+  when: gns3_lab_archive_action == 'restore'

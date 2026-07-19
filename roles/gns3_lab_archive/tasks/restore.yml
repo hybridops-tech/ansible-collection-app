@@ -1,0 +1,172 @@
+---
+- name: Validate expected archive checksum
+  ansible.builtin.assert:
+    that:
+      - gns3_lab_archive_expected_sha256 is match('^[0-9a-fA-F]{64}$')
+    fail_msg: >-
+      gns3_lab_archive_expected_sha256 must contain 64 hexadecimal characters
+
+- name: Inspect controller archive
+  ansible.builtin.stat:
+    path: "{{ _gns3_lab_archive_path }}"
+    checksum_algorithm: sha256
+  delegate_to: localhost
+  become: false
+  register: gns3_lab_archive_controller_stat
+
+- name: Verify controller archive
+  ansible.builtin.assert:
+    that:
+      - gns3_lab_archive_controller_stat.stat.isreg | default(false)
+      - >-
+        gns3_lab_archive_controller_stat.stat.checksum | lower
+        == gns3_lab_archive_expected_sha256 | lower
+    fail_msg: "GNS3 lab archive is missing or its SHA-256 checksum does not match"
+
+- name: List controller archive members
+  ansible.builtin.command:
+    argv:
+      - tar
+      - -tzf
+      - "{{ _gns3_lab_archive_path }}"
+  delegate_to: localhost
+  become: false
+  changed_when: false
+  register: gns3_lab_archive_member_list
+
+- name: Inspect controller archive member types
+  ansible.builtin.command:
+    argv:
+      - tar
+      - -tvzf
+      - "{{ _gns3_lab_archive_path }}"
+  delegate_to: localhost
+  become: false
+  changed_when: false
+  register: gns3_lab_archive_member_types
+
+- name: Reject unsafe archive members
+  ansible.builtin.assert:
+    that:
+      - >-
+        gns3_lab_archive_member_list.stdout_lines
+        | reject('match', '(^/|(^|/)\.\.(/|$))')
+        | list
+        | length == gns3_lab_archive_member_list.stdout_lines | length
+      - >-
+        gns3_lab_archive_member_list.stdout_lines
+        | reject('match', '^(projects|appliances|symbols|images|\.config/GNS3)(/|$)')
+        | list
+        | length == 0
+      - >-
+        gns3_lab_archive_member_types.stdout_lines
+        | select('match', '^[lh]')
+        | list
+        | length == 0
+    fail_msg: "GNS3 lab archive contains an unsafe member"
+
+- name: Protect existing GNS3 data
+  ansible.builtin.assert:
+    that:
+      - gns3_lab_archive_overwrite | bool
+    fail_msg: >-
+      GNS3 lab restore replaces generated controller state. Enable overwrite
+      only when restoring a verified archive after redeployment.
+
+- name: Read GNS3 service state
+  ansible.builtin.service_facts:
+  when: gns3_lab_archive_manage_service | bool
+
+- name: Record whether GNS3 service is running
+  ansible.builtin.set_fact:
+    gns3_lab_archive_service_was_running: >-
+      {{
+        gns3_lab_archive_manage_service | bool
+        and (
+          ansible_facts.services[gns3_lab_archive_service ~ '.service'].state
+          | default('stopped')
+        ) == 'running'
+      }}
+
+- name: Restore GNS3 lab state while the service is stopped
+  block:
+    - name: Stop GNS3 service for restore
+      ansible.builtin.systemd:
+        name: "{{ gns3_lab_archive_service }}"
+        state: stopped
+      when: gns3_lab_archive_service_was_running | bool
+
+    - name: Remove generated GNS3 data before restore
+      ansible.builtin.file:
+        path: "{{ gns3_lab_archive_data_root }}/{{ item }}"
+        state: absent
+      loop:
+        - projects
+        - appliances
+        - symbols
+        - .config/GNS3
+        - images
+      when:
+        - >-
+          gns3_lab_archive_member_list.stdout_lines
+          | select('match', '^' ~ (item | regex_escape) ~ '(/|$)')
+          | list
+          | length > 0
+
+    - name: Ensure GNS3 data root exists
+      ansible.builtin.file:
+        path: "{{ gns3_lab_archive_data_root }}"
+        state: directory
+        owner: "{{ gns3_lab_archive_owner }}"
+        group: "{{ gns3_lab_archive_group }}"
+        mode: "0750"
+
+    - name: Restore GNS3 lab archive
+      ansible.builtin.unarchive:
+        src: "{{ _gns3_lab_archive_path }}"
+        dest: "{{ gns3_lab_archive_data_root }}"
+        owner: "{{ gns3_lab_archive_owner }}"
+        group: "{{ gns3_lab_archive_group }}"
+        remote_src: false
+
+    - name: Normalise restored GNS3 ownership
+      ansible.builtin.file:
+        path: "{{ gns3_lab_archive_data_root }}"
+        owner: "{{ gns3_lab_archive_owner }}"
+        group: "{{ gns3_lab_archive_group }}"
+        recurse: true
+
+    - name: Publish GNS3 lab restore result
+      ansible.builtin.set_fact:
+        gns3_lab_archive_results:
+          action: restore
+          archive_path: "{{ _gns3_lab_archive_path }}"
+          sha256: "{{ gns3_lab_archive_controller_stat.stat.checksum }}"
+          members: "{{ gns3_lab_archive_member_list.stdout_lines }}"
+          images_included: >-
+            {{
+              gns3_lab_archive_member_list.stdout_lines
+              | select('match', '^images(/|$)')
+              | list
+              | length > 0
+            }}
+  always:
+    - name: Restart GNS3 service after restore
+      ansible.builtin.systemd:
+        name: "{{ gns3_lab_archive_service }}"
+        state: started
+      when: gns3_lab_archive_service_was_running | bool
+
+    - name: Verify GNS3 API after restore
+      ansible.builtin.uri:
+        url: "http://127.0.0.1:{{ gns3_lab_archive_port }}/v2/version"
+        url_username: "{{ gns3_lab_archive_username }}"
+        url_password: "{{ gns3_lab_archive_password }}"
+        force_basic_auth: true
+        status_code: 200
+      register: gns3_lab_archive_restore_api
+      retries: "{{ gns3_lab_archive_api_wait_timeout | int // 3 }}"
+      delay: 3
+      until: gns3_lab_archive_restore_api.status == 200
+      no_log: true
+      when: gns3_lab_archive_service_was_running | bool

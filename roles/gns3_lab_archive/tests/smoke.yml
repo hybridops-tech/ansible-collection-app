@@ -1,0 +1,139 @@
+---
+- name: Test GNS3 lab archive export and restore
+  hosts: localhost
+  become: false
+  gather_facts: false
+  vars:
+    test_root: /tmp/hyops-gns3-lab-archive-test
+    test_archive: /tmp/hyops-gns3-lab-archive-test-output/labs.tar.gz
+  tasks:
+    - name: Clear previous test data
+      ansible.builtin.file:
+        path: "{{ item }}"
+        state: absent
+      loop:
+        - "{{ test_root }}"
+        - "{{ test_archive | dirname }}"
+
+    - name: Create test project state
+      block:
+        - name: Create test directories
+          ansible.builtin.file:
+            path: "{{ item }}"
+            state: directory
+            mode: "0750"
+          loop:
+            - "{{ test_root }}/projects/demo/project-files"
+            - "{{ test_root }}/.config/GNS3/2.2"
+            - "{{ test_root }}/images/QEMU"
+
+        - name: Write test project
+          ansible.builtin.copy:
+            dest: "{{ test_root }}/projects/demo/demo.gns3"
+            mode: "0640"
+            content: '{"name":"demo"}\n'
+
+        - name: Write test node disk
+          ansible.builtin.copy:
+            dest: "{{ test_root }}/projects/demo/project-files/node.qcow2"
+            mode: "0640"
+            content: "test node state\n"
+
+        - name: Write test controller state
+          ansible.builtin.copy:
+            dest: "{{ test_root }}/.config/GNS3/2.2/gns3_controller.db"
+            mode: "0600"
+            content: "test controller state\n"
+
+        - name: Write excluded base image
+          ansible.builtin.copy:
+            dest: "{{ test_root }}/images/QEMU/base.qcow2"
+            mode: "0640"
+            content: "test base image\n"
+
+    - name: Export test GNS3 state
+      ansible.builtin.include_role:
+        name: hybridops.app.gns3_lab_archive
+      vars:
+        gns3_lab_archive_action: export
+        gns3_lab_archive_data_root: "{{ test_root }}"
+        gns3_lab_archive_path: "{{ test_archive }}"
+        gns3_lab_archive_remote_dir: "{{ test_root }}-staging"
+        gns3_lab_archive_owner: "{{ lookup('env', 'USER') }}"
+        gns3_lab_archive_group: "{{ lookup('pipe', 'id -gn') }}"
+        gns3_lab_archive_manage_service: false
+
+    - name: Retain archive checksum
+      ansible.builtin.set_fact:
+        gns3_lab_archive_test_checksum: "{{ gns3_lab_archive_results.sha256 }}"
+
+    - name: Inspect test archive
+      ansible.builtin.command:
+        argv:
+          - tar
+          - -tzf
+          - "{{ test_archive }}"
+      changed_when: false
+      register: gns3_lab_archive_test_members
+
+    - name: Require project state without base images
+      ansible.builtin.assert:
+        that:
+          - >-
+            gns3_lab_archive_test_members.stdout_lines
+            | select('match', '^projects/demo/demo\.gns3$')
+            | list
+            | length == 1
+          - >-
+            gns3_lab_archive_test_members.stdout_lines
+            | select('match', '^projects/demo/project-files/node\.qcow2$')
+            | list
+            | length == 1
+          - >-
+            gns3_lab_archive_test_members.stdout_lines
+            | select('match', '^images(/|$)')
+            | list
+            | length == 0
+
+    - name: Remove test data before restore
+      ansible.builtin.file:
+        path: "{{ test_root }}"
+        state: absent
+
+    - name: Restore test GNS3 state
+      ansible.builtin.include_role:
+        name: hybridops.app.gns3_lab_archive
+      vars:
+        gns3_lab_archive_action: restore
+        gns3_lab_archive_data_root: "{{ test_root }}"
+        gns3_lab_archive_path: "{{ test_archive }}"
+        gns3_lab_archive_expected_sha256: "{{ gns3_lab_archive_test_checksum }}"
+        gns3_lab_archive_overwrite: true
+        gns3_lab_archive_owner: "{{ lookup('env', 'USER') }}"
+        gns3_lab_archive_group: "{{ lookup('pipe', 'id -gn') }}"
+        gns3_lab_archive_manage_service: false
+
+    - name: Verify restored project
+      ansible.builtin.stat:
+        path: "{{ test_root }}/projects/demo/demo.gns3"
+      register: gns3_lab_archive_restored_project
+
+    - name: Verify restored node state
+      ansible.builtin.stat:
+        path: "{{ test_root }}/projects/demo/project-files/node.qcow2"
+      register: gns3_lab_archive_restored_node
+
+    - name: Require restored project state
+      ansible.builtin.assert:
+        that:
+          - gns3_lab_archive_restored_project.stat.isreg
+          - gns3_lab_archive_restored_node.stat.isreg
+
+  post_tasks:
+    - name: Remove test data
+      ansible.builtin.file:
+        path: "{{ item }}"
+        state: absent
+      loop:
+        - "{{ test_root }}"
+        - "{{ test_archive | dirname }}"
