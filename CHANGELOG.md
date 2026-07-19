@@ -9,6 +9,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - No unreleased changes yet.
 
+## [0.1.8] - 2026-07-19
+
+### Added
+
+- Added checksum-verified export and restore for GNS3 projects, controller
+  metadata, and writable node disks.
+
+### Fixed
+
+- Removed stale GNS3 repository metadata before package refresh.
+- Aligned the Ubuntu 24.04 GNS3 server package with the current repository
+  release.
+
 ## [0.1.7] - 2026-07-15
 
 ### Added
