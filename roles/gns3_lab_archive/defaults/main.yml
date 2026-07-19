@@ -1,0 +1,20 @@
+---
+# purpose: Default settings for portable GNS3 lab archives
+# maintainer: HybridOps.Tech
+
+gns3_lab_archive_action: export
+gns3_lab_archive_data_root: /var/lib/gns3
+gns3_lab_archive_path: ""
+gns3_lab_archive_resolved_path: ""
+gns3_lab_archive_expected_sha256: ""
+gns3_lab_archive_overwrite: false
+gns3_lab_archive_include_images: false
+gns3_lab_archive_remote_dir: /tmp/hyops-gns3-lab-archive
+gns3_lab_archive_owner: gns3
+gns3_lab_archive_group: gns3
+gns3_lab_archive_service: gns3server
+gns3_lab_archive_manage_service: true
+gns3_lab_archive_port: 3080
+gns3_lab_archive_username: gns3
+gns3_lab_archive_password: ""
+gns3_lab_archive_api_wait_timeout: 60

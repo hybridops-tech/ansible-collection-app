@@ -1,0 +1,187 @@
+---
+- name: Inspect GNS3 projects directory
+  ansible.builtin.stat:
+    path: "{{ gns3_lab_archive_data_root }}/projects"
+  register: gns3_lab_archive_projects_stat
+
+- name: Require GNS3 projects directory
+  ansible.builtin.assert:
+    that:
+      - gns3_lab_archive_projects_stat.stat.isdir | default(false)
+    fail_msg: >-
+      GNS3 projects directory does not exist:
+      {{ gns3_lab_archive_data_root }}/projects
+
+- name: Inspect optional GNS3 archive members
+  ansible.builtin.stat:
+    path: "{{ gns3_lab_archive_data_root }}/{{ item }}"
+  loop:
+    - appliances
+    - symbols
+    - .config/GNS3
+    - images
+  register: gns3_lab_archive_optional_stats
+
+- name: Select GNS3 archive members
+  ansible.builtin.set_fact:
+    gns3_lab_archive_members: >-
+      {{
+        ['projects']
+        + (
+          gns3_lab_archive_optional_stats.results
+          | selectattr('stat.exists', 'defined')
+          | selectattr('stat.exists')
+          | map(attribute='item')
+          | reject('equalto', 'images')
+          | list
+        )
+        + (
+          ['images']
+          if (
+            gns3_lab_archive_include_images | bool
+            and (
+              gns3_lab_archive_optional_stats.results
+              | selectattr('item', 'equalto', 'images')
+              | selectattr('stat.exists', 'defined')
+              | selectattr('stat.exists')
+              | list
+              | length > 0
+            )
+          )
+          else []
+        )
+      }}
+
+- name: Read GNS3 service state
+  ansible.builtin.service_facts:
+  when: gns3_lab_archive_manage_service | bool
+
+- name: Record whether GNS3 service is running
+  ansible.builtin.set_fact:
+    gns3_lab_archive_service_was_running: >-
+      {{
+        gns3_lab_archive_manage_service | bool
+        and (
+          ansible_facts.services[gns3_lab_archive_service ~ '.service'].state
+          | default('stopped')
+        ) == 'running'
+      }}
+
+- name: Export GNS3 lab state while the service is stopped
+  block:
+    - name: Stop GNS3 service for a consistent archive
+      ansible.builtin.systemd:
+        name: "{{ gns3_lab_archive_service }}"
+        state: stopped
+      when: gns3_lab_archive_service_was_running | bool
+
+    - name: Prepare remote archive directory
+      ansible.builtin.file:
+        path: "{{ gns3_lab_archive_remote_dir }}"
+        state: directory
+        mode: "0700"
+
+    - name: Build GNS3 lab archive
+      ansible.builtin.command:
+        argv: >-
+          {{
+            ['tar', '--sort=name', '--owner=0', '--group=0', '--numeric-owner',
+             '-czf', gns3_lab_archive_remote_dir ~ '/labs.tar.gz',
+             '-C', gns3_lab_archive_data_root]
+            + gns3_lab_archive_members
+          }}
+      changed_when: true
+
+    - name: Ensure controller archive directory exists
+      ansible.builtin.file:
+        path: "{{ _gns3_lab_archive_path | dirname }}"
+        state: directory
+        mode: "0700"
+      delegate_to: localhost
+      become: false
+
+    - name: Fetch GNS3 lab archive
+      ansible.builtin.fetch:
+        src: "{{ gns3_lab_archive_remote_dir }}/labs.tar.gz"
+        dest: "{{ _gns3_lab_archive_path }}"
+        flat: true
+
+    - name: Protect controller archive
+      ansible.builtin.file:
+        path: "{{ _gns3_lab_archive_path }}"
+        state: file
+        mode: "0600"
+      delegate_to: localhost
+      become: false
+
+    - name: Calculate controller archive checksum
+      ansible.builtin.stat:
+        path: "{{ _gns3_lab_archive_path }}"
+        checksum_algorithm: sha256
+      delegate_to: localhost
+      become: false
+      register: gns3_lab_archive_controller_stat
+
+    - name: Record archive creation time
+      ansible.builtin.command:
+        argv:
+          - date
+          - -u
+          - +%Y-%m-%dT%H:%M:%SZ
+      delegate_to: localhost
+      become: false
+      changed_when: false
+      register: gns3_lab_archive_created_at
+
+    - name: Write controller archive manifest
+      ansible.builtin.copy:
+        dest: "{{ _gns3_lab_archive_path }}.json"
+        mode: "0600"
+        content: >-
+          {{ {
+            'schema_version': 1,
+            'kind': 'hybridops/gns3-lab-archive',
+            'archive_file': _gns3_lab_archive_path | basename,
+            'sha256': gns3_lab_archive_controller_stat.stat.checksum,
+            'created_at': gns3_lab_archive_created_at.stdout,
+            'members': gns3_lab_archive_members,
+            'images_included': gns3_lab_archive_include_images | bool
+          } | to_nice_json }}
+      delegate_to: localhost
+      become: false
+
+    - name: Publish GNS3 lab archive result
+      ansible.builtin.set_fact:
+        gns3_lab_archive_results:
+          action: export
+          archive_path: "{{ _gns3_lab_archive_path }}"
+          sha256: "{{ gns3_lab_archive_controller_stat.stat.checksum }}"
+          created_at: "{{ gns3_lab_archive_created_at.stdout }}"
+          manifest_path: "{{ _gns3_lab_archive_path }}.json"
+          members: "{{ gns3_lab_archive_members }}"
+          images_included: "{{ gns3_lab_archive_include_images | bool }}"
+  always:
+    - name: Restart GNS3 service after export
+      ansible.builtin.systemd:
+        name: "{{ gns3_lab_archive_service }}"
+        state: started
+      when: gns3_lab_archive_service_was_running | bool
+
+    - name: Verify GNS3 API after export
+      ansible.builtin.uri:
+        url: "http://127.0.0.1:{{ gns3_lab_archive_port }}/v2/version"
+        url_username: "{{ gns3_lab_archive_username }}"
+        url_password: "{{ gns3_lab_archive_password }}"
+        force_basic_auth: true
+        status_code: 200
+      register: gns3_lab_archive_export_api
+      retries: "{{ gns3_lab_archive_api_wait_timeout | int // 3 }}"
+      delay: 3
+      until: gns3_lab_archive_export_api.status == 200
+      no_log: true
+      when: gns3_lab_archive_service_was_running | bool
+
+    - name: Remove remote archive staging
+      ansible.builtin.file:
+        path: "{{ gns3_lab_archive_remote_dir }}"
+        state: absent
