@@ -16,4 +16,4 @@ gns3_server_install_emulators: true
 gns3_server_api_wait_timeout: 60
 gns3_server_package_versions:
   jammy: "2.2.55~jammy2"
-  noble: "2.2.59~noble1"
+  noble: "2.2.60~noble1"

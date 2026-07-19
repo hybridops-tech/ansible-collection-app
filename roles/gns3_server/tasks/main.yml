@@ -14,6 +14,21 @@
       GNS3 server requires Ubuntu 22.04 or 24.04 on x86_64 and a non-empty
       gns3_server_password.
 
+- name: Find cached GNS3 repository metadata
+  ansible.builtin.find:
+    paths: /var/lib/apt/lists
+    patterns: "ppa.launchpadcontent.net_gns3_ppa_ubuntu_dists_*_InRelease"
+    file_type: file
+  register: gns3_server_cached_repository_metadata
+
+- name: Remove stale GNS3 repository metadata
+  ansible.builtin.file:
+    path: "{{ item.path }}"
+    state: absent
+  loop: "{{ gns3_server_cached_repository_metadata.files }}"
+  loop_control:
+    label: "{{ item.path }}"
+
 - name: Install repository prerequisites
   ansible.builtin.apt:
     name:
