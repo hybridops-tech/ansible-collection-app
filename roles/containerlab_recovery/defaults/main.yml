@@ -1,0 +1,27 @@
+---
+containerlab_recovery_action: export
+containerlab_recovery_mode: rebuild
+containerlab_recovery_topology_path: ""
+# Optional remote source root containing the authoritative topology and any
+# relative config/license files it references. When set, topology_relpath is
+# required and the tree is retained without rewriting Containerlab semantics.
+containerlab_recovery_source_root: ""
+containerlab_recovery_topology_relpath: ""
+containerlab_recovery_remote_root: /var/lib/hybridops/containerlab/recovery
+containerlab_recovery_controller_dir: ./output/containerlab-recovery
+# Optional stable controller-side copy used by a later fresh-host restore.
+# The timestamped archive remains the immutable recovery record.
+containerlab_recovery_controller_latest_path: ""
+containerlab_recovery_archive_path: ""
+containerlab_recovery_expected_sha256: ""
+containerlab_recovery_save_configs: true
+containerlab_recovery_save_configs_required: false
+containerlab_recovery_snapshot_timeout: 5m
+containerlab_recovery_snapshot_node_filter: ""
+containerlab_recovery_image_refs: []
+containerlab_recovery_labdir_base: /var/lib/hybridops/containerlab/labdirs
+containerlab_recovery_include_lab_dir: false
+containerlab_recovery_lab_dir: ""
+containerlab_recovery_additional_paths: []
+containerlab_recovery_overwrite: false
+containerlab_recovery_disable_version_check: true

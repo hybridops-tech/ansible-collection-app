@@ -1,0 +1,11 @@
+---
+containerlab_healthcheck_expected_version: ""
+containerlab_healthcheck_require_kvm: false
+containerlab_healthcheck_topology_path: ""
+containerlab_healthcheck_lab_name: ""
+containerlab_healthcheck_allow_single_lab_discovery: false
+containerlab_healthcheck_require_deployed_lab: false
+containerlab_healthcheck_required_images: []
+containerlab_healthcheck_pull_missing_images: false
+containerlab_healthcheck_labdir_base: /var/lib/hybridops/containerlab/labdirs
+containerlab_healthcheck_disable_version_check: true

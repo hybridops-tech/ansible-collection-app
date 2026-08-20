@@ -1,0 +1,22 @@
+---
+containerlab_version: "0.78.0"
+containerlab_install_docker: true
+containerlab_docker_package: docker.io
+containerlab_operator_user: "{{ ansible_user | default(ansible_user_id) }}"
+containerlab_package_dir: /var/cache/hybridops/containerlab
+containerlab_work_root: /var/lib/hybridops/containerlab
+# Optional explicit checksum override. When empty, prefer a known static digest
+# and otherwise verify the package against the official release checksums.txt.
+containerlab_package_checksum: ""
+containerlab_package_checksums:
+  "0.77.0":
+    amd64: "sha256:675eea8bd4d05ea3abc4a98cfa859975c9886705d6a510fead4dfd8dbed8b793"
+    arm64: "sha256:9bfd89d1afbff87c316febc721eb960148420ec94f3e063ba54b13ef38e8ba60"
+containerlab_package_checksum_url: >-
+  https://github.com/srl-labs/containerlab/releases/download/v{{ containerlab_version }}/checksums.txt
+containerlab_require_kvm: false
+containerlab_supported_architectures:
+  x86_64: amd64
+  amd64: amd64
+  aarch64: arm64
+  arm64: arm64
