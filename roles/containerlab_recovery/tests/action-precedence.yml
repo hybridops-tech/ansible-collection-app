@@ -1,0 +1,50 @@
+---
+- name: Test Containerlab recovery lifecycle action precedence
+  hosts: localhost
+  connection: local
+  become: false
+  gather_facts: false
+
+  vars:
+    test_root: /tmp/hybridops-containerlab-recovery-action-test
+    containerlab_recovery_action: export
+    containerlab_recovery_topology_path: ""
+    containerlab_recovery_controller_dir: ""
+
+  tasks:
+    - name: Reset expected failure status
+      ansible.builtin.set_fact:
+        containerlab_recovery_import_selected: false
+
+    - name: Exercise wrapper-selected import action
+      block:
+        - name: Run recovery role
+          ansible.builtin.include_role:
+            name: hybridops.app.containerlab_recovery
+          vars:
+            _containerlab_recovery_action: import
+            _containerlab_recovery_topology_path: "{{ test_root }}/lab.clab.yml"
+            _containerlab_recovery_controller_dir: "{{ test_root }}/controller"
+            containerlab_recovery_remote_root: "{{ test_root }}"
+            containerlab_recovery_labdir_base: "{{ test_root }}/labdirs"
+            containerlab_recovery_archive_path: ""
+      rescue:
+        - name: Record import-path validation
+          ansible.builtin.set_fact:
+            containerlab_recovery_import_selected: >-
+              {{
+                'containerlab_recovery_archive_path is required for import'
+                in (ansible_failed_result.msg | default(''))
+              }}
+
+    - name: Require wrapper-selected import action
+      ansible.builtin.assert:
+        that:
+          - containerlab_recovery_import_selected | bool
+          - _containerlab_recovery_effective_topology_path == test_root ~ '/lab.clab.yml'
+          - _containerlab_recovery_effective_controller_dir == test_root ~ '/controller'
+
+    - name: Remove test workspace
+      ansible.builtin.file:
+        path: "{{ test_root }}"
+        state: absent

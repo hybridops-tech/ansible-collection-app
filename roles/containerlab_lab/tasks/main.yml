@@ -1,11 +1,21 @@
 ---
+- name: Resolve effective Containerlab lab action
+  ansible.builtin.set_fact:
+    _containerlab_lab_effective_action: >-
+      {{ _containerlab_lab_action | default(containerlab_lab_action, true) }}
+    _containerlab_lab_effective_destroy_all: >-
+      {{ _containerlab_lab_destroy_all | default(containerlab_lab_destroy_all, true) }}
+
 - name: Validate Containerlab lab inputs
   ansible.builtin.assert:
     that:
-      - containerlab_lab_action in ['validate', 'deploy', 'inspect', 'destroy', 'redeploy', 'save', 'snapshot-save']
+      - >-
+        _containerlab_lab_effective_action in
+        ['validate', 'deploy', 'inspect', 'destroy', 'redeploy', 'save', 'snapshot-save']
       - containerlab_lab_labdir_base | length > 0
       - >-
-        (containerlab_lab_action == 'destroy' and containerlab_lab_destroy_all | bool) or
+        (_containerlab_lab_effective_action == 'destroy' and
+         _containerlab_lab_effective_destroy_all | bool) or
         (containerlab_lab_source_dir | length > 0 and
          containerlab_lab_topology_relpath | length > 0) or
         (containerlab_lab_topology_path | length > 0)
@@ -53,13 +63,17 @@
         if containerlab_lab_source_dir | length > 0
         else containerlab_lab_topology_path
       }}
-  when: not (containerlab_lab_action == 'destroy' and containerlab_lab_destroy_all | bool)
+  when: >-
+    not (_containerlab_lab_effective_action == 'destroy' and
+         _containerlab_lab_effective_destroy_all | bool)
 
 - name: Read Containerlab topology state
   ansible.builtin.stat:
     path: "{{ containerlab_lab_effective_topology_path }}"
   register: containerlab_lab_topology
-  when: not (containerlab_lab_action == 'destroy' and containerlab_lab_destroy_all | bool)
+  when: >-
+    not (_containerlab_lab_effective_action == 'destroy' and
+         _containerlab_lab_effective_destroy_all | bool)
 
 - name: Verify Containerlab topology exists
   ansible.builtin.assert:
@@ -67,7 +81,9 @@
       - containerlab_lab_topology.stat.exists
       - containerlab_lab_topology.stat.isreg
     fail_msg: "Containerlab topology does not exist at {{ containerlab_lab_effective_topology_path }}."
-  when: not (containerlab_lab_action == 'destroy' and containerlab_lab_destroy_all | bool)
+  when: >-
+    not (_containerlab_lab_effective_action == 'destroy' and
+         _containerlab_lab_effective_destroy_all | bool)
 
 - name: Inspect required local images
   ansible.builtin.command:
@@ -82,7 +98,7 @@
   failed_when: false
   when:
     - containerlab_lab_required_images | length > 0
-    - containerlab_lab_action != 'destroy'
+    - _containerlab_lab_effective_action != 'destroy'
 
 - name: Pull missing required images when allowed
   ansible.builtin.command:
@@ -109,7 +125,7 @@
   failed_when: false
   when:
     - containerlab_lab_required_images | length > 0
-    - containerlab_lab_action != 'destroy'
+    - _containerlab_lab_effective_action != 'destroy'
 
 - name: Verify required images are available
   ansible.builtin.assert:
@@ -125,7 +141,7 @@
       available through the local image store or an authenticated registry.
   when:
     - containerlab_lab_required_images | length > 0
-    - containerlab_lab_action != 'destroy'
+    - _containerlab_lab_effective_action != 'destroy'
 
 - name: Validate Containerlab topology natively
   ansible.builtin.command:
@@ -139,7 +155,7 @@
     CLAB_LABDIR_BASE: "{{ containerlab_lab_labdir_base }}"
   register: containerlab_lab_command
   changed_when: false
-  when: containerlab_lab_action == 'validate'
+  when: _containerlab_lab_effective_action == 'validate'
 
 - name: Deploy or converge Containerlab topology natively
   ansible.builtin.command:
@@ -152,7 +168,7 @@
     CLAB_LABDIR_BASE: "{{ containerlab_lab_labdir_base }}"
   register: containerlab_lab_command
   changed_when: true
-  when: containerlab_lab_action == 'deploy'
+  when: _containerlab_lab_effective_action == 'deploy'
 
 - name: Inspect Containerlab topology natively
   ansible.builtin.command:
@@ -168,7 +184,7 @@
     CLAB_LABDIR_BASE: "{{ containerlab_lab_labdir_base }}"
   register: containerlab_lab_command
   changed_when: false
-  when: containerlab_lab_action == 'inspect'
+  when: _containerlab_lab_effective_action == 'inspect'
 
 - name: Destroy all Containerlab labs natively on dedicated host
   ansible.builtin.command:
@@ -183,8 +199,8 @@
   register: containerlab_lab_command
   changed_when: true
   when:
-    - containerlab_lab_action == 'destroy'
-    - containerlab_lab_destroy_all | bool
+    - _containerlab_lab_effective_action == 'destroy'
+    - _containerlab_lab_effective_destroy_all | bool
 
 - name: Destroy Containerlab topology natively
   ansible.builtin.command:
@@ -197,8 +213,8 @@
   register: containerlab_lab_command
   changed_when: true
   when:
-    - containerlab_lab_action == 'destroy'
-    - not (containerlab_lab_destroy_all | bool)
+    - _containerlab_lab_effective_action == 'destroy'
+    - not (_containerlab_lab_effective_destroy_all | bool)
 
 - name: Redeploy Containerlab topology natively
   ansible.builtin.command:
@@ -212,21 +228,21 @@
     CLAB_LABDIR_BASE: "{{ containerlab_lab_labdir_base }}"
   register: containerlab_lab_command
   changed_when: true
-  when: containerlab_lab_action == 'redeploy'
+  when: _containerlab_lab_effective_action == 'redeploy'
 
 - name: Validate configuration-save destination
   ansible.builtin.assert:
     that:
       - containerlab_lab_save_copy_dir | length > 0
     fail_msg: "containerlab_lab_save_copy_dir is required for the save action."
-  when: containerlab_lab_action == 'save'
+  when: _containerlab_lab_effective_action == 'save'
 
 - name: Create configuration-save destination
   ansible.builtin.file:
     path: "{{ containerlab_lab_save_copy_dir }}"
     state: directory
     mode: "0750"
-  when: containerlab_lab_action == 'save'
+  when: _containerlab_lab_effective_action == 'save'
 
 - name: Save and copy native Containerlab configurations
   ansible.builtin.command:
@@ -242,21 +258,21 @@
     CLAB_LABDIR_BASE: "{{ containerlab_lab_labdir_base }}"
   register: containerlab_lab_command
   changed_when: true
-  when: containerlab_lab_action == 'save'
+  when: _containerlab_lab_effective_action == 'save'
 
 - name: Validate snapshot destination
   ansible.builtin.assert:
     that:
       - containerlab_lab_snapshot_output_dir | length > 0
     fail_msg: "containerlab_lab_snapshot_output_dir is required for snapshot-save."
-  when: containerlab_lab_action == 'snapshot-save'
+  when: _containerlab_lab_effective_action == 'snapshot-save'
 
 - name: Create snapshot destination
   ansible.builtin.file:
     path: "{{ containerlab_lab_snapshot_output_dir }}"
     state: directory
     mode: "0750"
-  when: containerlab_lab_action == 'snapshot-save'
+  when: _containerlab_lab_effective_action == 'snapshot-save'
 
 - name: Save native vrnetlab snapshots
   ansible.builtin.command:
@@ -271,16 +287,16 @@
     CLAB_LABDIR_BASE: "{{ containerlab_lab_labdir_base }}"
   register: containerlab_lab_command
   changed_when: true
-  when: containerlab_lab_action == 'snapshot-save'
+  when: _containerlab_lab_effective_action == 'snapshot-save'
 
 - name: Publish Containerlab lab action result
   ansible.builtin.set_fact:
     containerlab_lab_result:
-      action: "{{ containerlab_lab_action }}"
+      action: "{{ _containerlab_lab_effective_action }}"
       topology: "{{ containerlab_lab_effective_topology_path | default('') }}"
       source_staged: "{{ containerlab_lab_source_dir | length > 0 }}"
       labdir_base: "{{ containerlab_lab_labdir_base }}"
-      destroy_all: "{{ containerlab_lab_destroy_all | bool }}"
+      destroy_all: "{{ _containerlab_lab_effective_destroy_all | bool }}"
       rc: "{{ containerlab_lab_command.rc | default(0) }}"
       stdout: "{{ containerlab_lab_command.stdout | default('') }}"
       stderr: "{{ containerlab_lab_command.stderr | default('') }}"
