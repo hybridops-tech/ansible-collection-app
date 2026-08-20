@@ -1,8 +1,23 @@
 ---
+- name: Resolve effective Containerlab recovery action
+  ansible.builtin.set_fact:
+    _containerlab_recovery_effective_action: >-
+      {{ _containerlab_recovery_action | default(containerlab_recovery_action, true) }}
+    _containerlab_recovery_effective_topology_path: >-
+      {{
+        _containerlab_recovery_topology_path
+        | default(containerlab_recovery_topology_path, true)
+      }}
+    _containerlab_recovery_effective_controller_dir: >-
+      {{
+        _containerlab_recovery_controller_dir
+        | default(containerlab_recovery_controller_dir, true)
+      }}
+
 - name: Validate Containerlab recovery inputs
   ansible.builtin.assert:
     that:
-      - containerlab_recovery_action in ['export', 'import']
+      - _containerlab_recovery_effective_action in ['export', 'import']
       - containerlab_recovery_mode in ['ephemeral', 'rebuild', 'snapshot']
       - containerlab_recovery_labdir_base | length > 0
     fail_msg: "Containerlab recovery action/mode and native labdir base are required."
@@ -14,12 +29,12 @@
     mode: "0750"
 
 - name: Export Containerlab recovery products
-  when: containerlab_recovery_action == 'export'
+  when: _containerlab_recovery_effective_action == 'export'
   block:
     - name: Validate export topology path
       ansible.builtin.assert:
         that:
-          - containerlab_recovery_topology_path | length > 0
+          - _containerlab_recovery_effective_topology_path | length > 0
         fail_msg: "containerlab_recovery_topology_path is required for export."
 
     - name: Validate source-root recovery contract
@@ -35,7 +50,7 @@
 
     - name: Read export topology state
       ansible.builtin.stat:
-        path: "{{ containerlab_recovery_topology_path }}"
+        path: "{{ _containerlab_recovery_effective_topology_path }}"
         checksum_algorithm: sha256
       register: containerlab_recovery_topology
 
@@ -86,7 +101,8 @@
     - name: Resolve recovery bundle identity
       ansible.builtin.set_fact:
         containerlab_recovery_bundle_name: >-
-          {{ (containerlab_recovery_topology_path | basename | regex_replace('[^A-Za-z0-9_.-]', '_'))
+          {{ (_containerlab_recovery_effective_topology_path | basename
+             | regex_replace('[^A-Za-z0-9_.-]', '_'))
              ~ '-' ~ (containerlab_recovery_timestamp.stdout | trim) }}
 
     - name: Resolve recovery bundle paths
@@ -99,7 +115,7 @@
         containerlab_recovery_manifest_topology_relpath: >-
           {{ containerlab_recovery_topology_relpath
              if containerlab_recovery_source_root | length > 0
-             else (containerlab_recovery_topology_path | basename) }}
+             else (_containerlab_recovery_effective_topology_path | basename) }}
 
     - name: Create recovery bundle directory
       ansible.builtin.file:
@@ -124,8 +140,10 @@
 
     - name: Preserve standalone authoritative topology file
       ansible.builtin.copy:
-        src: "{{ containerlab_recovery_topology_path }}"
-        dest: "{{ containerlab_recovery_bundle_source_root }}/{{ containerlab_recovery_topology_path | basename }}"
+        src: "{{ _containerlab_recovery_effective_topology_path }}"
+        dest: >-
+          {{ containerlab_recovery_bundle_source_root }}/{{
+             _containerlab_recovery_effective_topology_path | basename }}
         remote_src: true
         mode: "0640"
       when: containerlab_recovery_source_root | length == 0
@@ -151,7 +169,7 @@
           - containerlab
           - inspect
           - -t
-          - "{{ containerlab_recovery_topology_path }}"
+          - "{{ _containerlab_recovery_effective_topology_path }}"
           - -f
           - json
       environment:
@@ -183,7 +201,7 @@
           - containerlab
           - save
           - -t
-          - "{{ containerlab_recovery_topology_path }}"
+          - "{{ _containerlab_recovery_effective_topology_path }}"
           - --copy
           - "{{ containerlab_recovery_bundle_source_root }}/startup-configs"
       environment:
@@ -207,7 +225,8 @@
     - name: Ask Containerlab to save supported vrnetlab snapshots
       ansible.builtin.command:
         argv: >-
-          {{ ['containerlab', 'tools', 'snapshot', 'save', '-t', containerlab_recovery_topology_path,
+          {{ ['containerlab', 'tools', 'snapshot', 'save',
+              '-t', _containerlab_recovery_effective_topology_path,
               '--output-dir', containerlab_recovery_bundle_root ~ '/snapshots',
               '--timeout', containerlab_recovery_snapshot_timeout, '--format', 'json']
              + (['--node-filter', containerlab_recovery_snapshot_node_filter]
@@ -295,7 +314,7 @@
 
     - name: Ensure controller recovery directory exists
       ansible.builtin.file:
-        path: "{{ containerlab_recovery_controller_dir }}"
+        path: "{{ _containerlab_recovery_effective_controller_dir }}"
         state: directory
         mode: "0700"
       delegate_to: localhost
@@ -304,13 +323,17 @@
     - name: Retain recovery archive off the disposable host
       ansible.builtin.fetch:
         src: "{{ containerlab_recovery_remote_root }}/{{ containerlab_recovery_bundle_name }}.tar.gz"
-        dest: "{{ containerlab_recovery_controller_dir }}/{{ containerlab_recovery_bundle_name }}.tar.gz"
+        dest: >-
+          {{ _containerlab_recovery_effective_controller_dir }}/{{
+             containerlab_recovery_bundle_name }}.tar.gz
         flat: true
         fail_on_missing: true
 
     - name: Read retained controller archive checksum
       ansible.builtin.stat:
-        path: "{{ containerlab_recovery_controller_dir }}/{{ containerlab_recovery_bundle_name }}.tar.gz"
+        path: >-
+          {{ _containerlab_recovery_effective_controller_dir }}/{{
+             containerlab_recovery_bundle_name }}.tar.gz
         checksum_algorithm: sha256
       register: containerlab_recovery_controller_archive_stat
       delegate_to: localhost
@@ -338,7 +361,7 @@
             {{ containerlab_recovery_remote_root
                ~ '/' ~ containerlab_recovery_bundle_name ~ '.tar.gz' }}
           controller_archive: >-
-            {{ containerlab_recovery_controller_dir
+            {{ _containerlab_recovery_effective_controller_dir
                ~ '/' ~ containerlab_recovery_bundle_name ~ '.tar.gz' }}
           sha256: "{{ containerlab_recovery_archive_stat.stat.checksum }}"
           topology_sha256: "{{ containerlab_recovery_topology.stat.checksum }}"
@@ -347,7 +370,7 @@
           safe_for_host_destroy: true
 
 - name: Import Containerlab recovery products
-  when: containerlab_recovery_action == 'import'
+  when: _containerlab_recovery_effective_action == 'import'
   block:
     - name: Validate recovery archive input
       ansible.builtin.assert:

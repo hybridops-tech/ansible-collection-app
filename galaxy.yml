@@ -5,12 +5,12 @@
 
 namespace: hybridops
 name: app
-version: "0.1.8"
+version: "0.1.9"
 
 readme: README.md
 description: >-
-  Application and platform roles for HybridOps, including Jenkins, RKE2,
-  NetBox, Moodle, and core Linux/Windows services.
+  Application and platform roles for HybridOps, including network labs,
+  Containerlab, Jenkins, RKE2, NetBox, and core Linux and Windows services.
 
 authors:
   - HybridOps.Tech
@@ -34,11 +34,15 @@ tags:
   - patroni
   - argocd
   - proxmox
+  - networking
+  - containerlab
+  - gns3
+  - eveng
 
 homepage: https://hybridops.tech
 documentation: https://docs.hybridops.tech
-repository: https://galaxy.ansible.com/hybridops/app
-issues: https://hybridops.tech/contact
+repository: https://github.com/hybridops-tech/ansible-collection-app
+issues: https://github.com/hybridops-tech/ansible-collection-app/issues
 
 dependencies:
   hybridops.common: ">=0.1.0"

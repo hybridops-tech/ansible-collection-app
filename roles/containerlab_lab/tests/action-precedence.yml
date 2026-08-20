@@ -1,0 +1,26 @@
+---
+- name: Test Containerlab lab lifecycle action precedence
+  hosts: localhost
+  connection: local
+  become: false
+  gather_facts: false
+
+  vars:
+    test_root: /tmp/hybridops-containerlab-lab-action-test
+    containerlab_lab_action: deploy
+    containerlab_lab_destroy_all: false
+
+  tasks:
+    - name: Exercise wrapper-selected destroy action
+      ansible.builtin.include_role:
+        name: hybridops.app.containerlab_lab
+      vars:
+        _containerlab_lab_action: destroy
+        _containerlab_lab_destroy_all: true
+        containerlab_lab_labdir_base: "{{ test_root }}/labdirs"
+
+    - name: Require wrapper-selected destroy action
+      ansible.builtin.assert:
+        that:
+          - containerlab_lab_result.action == 'destroy'
+          - containerlab_lab_result.destroy_all | bool
