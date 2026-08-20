@@ -1,0 +1,169 @@
+---
+- name: Validate Containerlab host inputs
+  ansible.builtin.assert:
+    that:
+      - ansible_distribution == "Ubuntu"
+      - ansible_distribution_version is version('22.04', '>=')
+      - ansible_distribution_version is version('24.04', '<=')
+      - ansible_architecture in containerlab_supported_architectures
+      - containerlab_version | length > 0
+      - containerlab_operator_user | length > 0
+    fail_msg: >-
+      Containerlab requires Ubuntu 22.04-24.04 on a supported architecture,
+      a pinned version, and an existing operator user.
+
+- name: Resolve Containerlab package architecture
+  ansible.builtin.set_fact:
+    containerlab_package_arch: "{{ containerlab_supported_architectures[ansible_architecture] }}"
+
+- name: Resolve known Containerlab package checksum
+  ansible.builtin.set_fact:
+    containerlab_known_package_checksum: >-
+      {{
+        containerlab_package_checksums.get(containerlab_version, {}).get(
+          containerlab_package_arch,
+          ''
+        )
+      }}
+
+- name: Resolve effective Containerlab package checksum
+  ansible.builtin.set_fact:
+    containerlab_effective_package_checksum: >-
+      {{
+        containerlab_package_checksum
+        if containerlab_package_checksum | length > 0
+        else (
+          containerlab_known_package_checksum
+          if containerlab_known_package_checksum | length > 0
+          else ('sha256:' ~ containerlab_package_checksum_url)
+        )
+      }}
+
+- name: Require a verified Containerlab package
+  ansible.builtin.assert:
+    that:
+      - containerlab_effective_package_checksum | length > 0
+      - >-
+        (containerlab_effective_package_checksum is match('^sha256:[0-9a-f]{64}$'))
+        or (containerlab_effective_package_checksum is match('^sha256:https://.+$'))
+    fail_msg: >-
+      Containerlab package verification must use either a pinned SHA-256 digest
+      or an HTTPS SHA-256 checksum manifest.
+
+- name: Install Docker runtime
+  ansible.builtin.apt:
+    name: "{{ containerlab_docker_package }}"
+    state: present
+    update_cache: true
+  when: containerlab_install_docker | bool
+
+- name: Ensure Docker service is enabled and running
+  ansible.builtin.service:
+    name: docker
+    enabled: true
+    state: started
+  when: containerlab_install_docker | bool
+
+- name: Create Containerlab package directory
+  ansible.builtin.file:
+    path: "{{ containerlab_package_dir }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Create HybridOps Containerlab work root
+  ansible.builtin.file:
+    path: "{{ containerlab_work_root }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Download pinned Containerlab package
+  ansible.builtin.get_url:
+    url: >-
+      {{ 'https://github.com/srl-labs/containerlab/releases/download/v'
+         ~ containerlab_version
+         ~ '/containerlab_' ~ containerlab_version
+         ~ '_linux_' ~ containerlab_package_arch ~ '.deb' }}
+    dest: >-
+      {{ containerlab_package_dir }}/containerlab_{{ containerlab_version }}_linux_{{ containerlab_package_arch }}.deb
+    checksum: "{{ containerlab_effective_package_checksum }}"
+    owner: root
+    group: root
+    mode: "0644"
+
+- name: Read downloaded Containerlab package digest
+  ansible.builtin.stat:
+    path: >-
+      {{ containerlab_package_dir }}/containerlab_{{ containerlab_version }}_linux_{{ containerlab_package_arch }}.deb
+    checksum_algorithm: sha256
+  register: containerlab_package_file
+
+- name: Install pinned Containerlab package
+  ansible.builtin.apt:
+    deb: >-
+      {{ containerlab_package_dir }}/containerlab_{{ containerlab_version }}_linux_{{ containerlab_package_arch }}.deb
+    state: present
+
+- name: Ensure Containerlab administrators group exists
+  ansible.builtin.group:
+    name: clab_admins
+    state: present
+
+- name: Add operator to Containerlab and Docker groups
+  ansible.builtin.user:
+    name: "{{ containerlab_operator_user }}"
+    groups: >-
+      {{ ['clab_admins', 'docker'] if containerlab_install_docker | bool else ['clab_admins'] }}
+    append: true
+  when: containerlab_operator_user != 'root'
+
+- name: Read installed Containerlab version
+  ansible.builtin.command:
+    argv:
+      - containerlab
+      - version
+      - --short
+  register: containerlab_installed_version
+  changed_when: false
+
+- name: Verify pinned Containerlab version
+  ansible.builtin.assert:
+    that:
+      - containerlab_installed_version.stdout | trim == containerlab_version
+    fail_msg: >-
+      Installed Containerlab version {{ containerlab_installed_version.stdout | trim }}
+      does not match required version {{ containerlab_version }}.
+
+- name: Read KVM device state
+  ansible.builtin.stat:
+    path: /dev/kvm
+  register: containerlab_kvm_device
+  when: containerlab_require_kvm | bool
+
+- name: Verify KVM capability when required
+  ansible.builtin.assert:
+    that:
+      - containerlab_kvm_device.stat.exists
+      - containerlab_kvm_device.stat.ischr
+    fail_msg: >-
+      This Containerlab workload requires KVM, but /dev/kvm is not available.
+      Verify that the execution substrate exposes nested virtualization.
+  when: containerlab_require_kvm | bool
+
+- name: Publish Containerlab runtime result
+  ansible.builtin.set_fact:
+    containerlab_runtime_result:
+      status: ready
+      version: "{{ containerlab_installed_version.stdout | trim }}"
+      architecture: "{{ containerlab_package_arch }}"
+      package_checksum: "sha256:{{ containerlab_package_file.stat.checksum }}"
+      docker: "{{ 'managed' if containerlab_install_docker | bool else 'external' }}"
+      kvm: >-
+        {{
+          'required-and-ready'
+          if containerlab_require_kvm | bool
+          else 'not-required-by-contract'
+        }}

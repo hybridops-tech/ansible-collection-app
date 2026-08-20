@@ -1,0 +1,23 @@
+---
+containerlab_lab_action: validate
+# Either provide an already-remote topology path, or provide a controller-side
+# source directory plus the topology path relative to that directory.
+containerlab_lab_topology_path: ""
+containerlab_lab_source_dir: ""
+containerlab_lab_topology_relpath: ""
+containerlab_lab_remote_dir: /var/lib/hybridops/containerlab/labs/managed
+# Keep Containerlab-generated clab-* artifacts outside the authoritative source
+# tree so source preservation does not implicitly absorb native runtime state.
+containerlab_lab_labdir_base: /var/lib/hybridops/containerlab/labdirs
+containerlab_lab_restore_all_dir: ""
+containerlab_lab_cleanup: false
+# Dedicated managed hosts may destroy every Containerlab lab natively without
+# relying on a remembered topology path from an earlier restored bundle.
+containerlab_lab_destroy_all: false
+containerlab_lab_save_copy_dir: ""
+containerlab_lab_snapshot_output_dir: ""
+containerlab_lab_snapshot_node_filter: ""
+containerlab_lab_snapshot_timeout: 5m
+containerlab_lab_required_images: []
+containerlab_lab_pull_missing_images: false
+containerlab_lab_disable_version_check: true

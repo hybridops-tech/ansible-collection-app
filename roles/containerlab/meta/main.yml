@@ -1,0 +1,18 @@
+---
+galaxy_info:
+  author: HybridOps.Tech
+  description: Install and verify a pinned Containerlab runtime on Ubuntu
+  license: MIT
+  min_ansible_version: "2.15"
+  platforms:
+    - name: Ubuntu
+      versions:
+        - jammy
+        - noble
+  galaxy_tags:
+    - networking
+    - containerlab
+    - emulation
+    - docker
+    - virtualization
+dependencies: []

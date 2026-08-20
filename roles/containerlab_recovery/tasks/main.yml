@@ -1,0 +1,478 @@
+---
+- name: Validate Containerlab recovery inputs
+  ansible.builtin.assert:
+    that:
+      - containerlab_recovery_action in ['export', 'import']
+      - containerlab_recovery_mode in ['ephemeral', 'rebuild', 'snapshot']
+      - containerlab_recovery_labdir_base | length > 0
+    fail_msg: "Containerlab recovery action/mode and native labdir base are required."
+
+- name: Create recovery root
+  ansible.builtin.file:
+    path: "{{ containerlab_recovery_remote_root }}"
+    state: directory
+    mode: "0750"
+
+- name: Export Containerlab recovery products
+  when: containerlab_recovery_action == 'export'
+  block:
+    - name: Validate export topology path
+      ansible.builtin.assert:
+        that:
+          - containerlab_recovery_topology_path | length > 0
+        fail_msg: "containerlab_recovery_topology_path is required for export."
+
+    - name: Validate source-root recovery contract
+      ansible.builtin.assert:
+        that:
+          - containerlab_recovery_topology_relpath | length > 0
+          - not (containerlab_recovery_topology_relpath | regex_search('^/'))
+          - "'..' not in containerlab_recovery_topology_relpath.split('/')"
+        fail_msg: >-
+          When containerlab_recovery_source_root is set, topology_relpath must
+          identify the topology within that source root.
+      when: containerlab_recovery_source_root | length > 0
+
+    - name: Read export topology state
+      ansible.builtin.stat:
+        path: "{{ containerlab_recovery_topology_path }}"
+        checksum_algorithm: sha256
+      register: containerlab_recovery_topology
+
+    - name: Verify export topology exists
+      ansible.builtin.assert:
+        that:
+          - containerlab_recovery_topology.stat.exists
+          - containerlab_recovery_topology.stat.isreg
+        fail_msg: "Containerlab topology is unavailable for recovery export."
+
+    - name: Read native Containerlab labdir base state
+      ansible.builtin.stat:
+        path: "{{ containerlab_recovery_labdir_base }}"
+      register: containerlab_recovery_labdir_base_stat
+
+    - name: Verify native Containerlab labdir base exists
+      ansible.builtin.assert:
+        that:
+          - containerlab_recovery_labdir_base_stat.stat.exists
+          - containerlab_recovery_labdir_base_stat.stat.isdir
+        fail_msg: >-
+          Containerlab native labdir base is unavailable. Recovery must operate
+          against the same generated-runtime location used by the lab deploy.
+
+    - name: Read source-root state
+      ansible.builtin.stat:
+        path: "{{ containerlab_recovery_source_root }}"
+      register: containerlab_recovery_source_root_stat
+      when: containerlab_recovery_source_root | length > 0
+
+    - name: Verify source root exists
+      ansible.builtin.assert:
+        that:
+          - containerlab_recovery_source_root_stat.stat.exists
+          - containerlab_recovery_source_root_stat.stat.isdir
+        fail_msg: "Declared Containerlab source root is unavailable."
+      when: containerlab_recovery_source_root | length > 0
+
+    - name: Read UTC recovery timestamp
+      ansible.builtin.command:
+        argv:
+          - date
+          - -u
+          - +%Y%m%dT%H%M%SZ
+      register: containerlab_recovery_timestamp
+      changed_when: false
+
+    - name: Resolve recovery bundle identity
+      ansible.builtin.set_fact:
+        containerlab_recovery_bundle_name: >-
+          {{ (containerlab_recovery_topology_path | basename | regex_replace('[^A-Za-z0-9_.-]', '_'))
+             ~ '-' ~ (containerlab_recovery_timestamp.stdout | trim) }}
+
+    - name: Resolve recovery bundle paths
+      ansible.builtin.set_fact:
+        containerlab_recovery_bundle_root: >-
+          {{ containerlab_recovery_remote_root ~ '/' ~ containerlab_recovery_bundle_name }}
+        containerlab_recovery_bundle_source_root: >-
+          {{ containerlab_recovery_remote_root ~ '/' ~ containerlab_recovery_bundle_name ~
+             ('/lab-source' if containerlab_recovery_source_root | length > 0 else '') }}
+        containerlab_recovery_manifest_topology_relpath: >-
+          {{ containerlab_recovery_topology_relpath
+             if containerlab_recovery_source_root | length > 0
+             else (containerlab_recovery_topology_path | basename) }}
+
+    - name: Create recovery bundle directory
+      ansible.builtin.file:
+        path: "{{ containerlab_recovery_bundle_root }}"
+        state: directory
+        mode: "0750"
+
+    - name: Create retained source-tree directory
+      ansible.builtin.file:
+        path: "{{ containerlab_recovery_bundle_source_root }}"
+        state: directory
+        mode: "0750"
+      when: containerlab_recovery_source_root | length > 0
+
+    - name: Preserve authoritative Containerlab source tree
+      ansible.builtin.copy:
+        src: "{{ containerlab_recovery_source_root | regex_replace('/+$', '') }}/"
+        dest: "{{ containerlab_recovery_bundle_source_root | regex_replace('/+$', '') }}/"
+        remote_src: true
+        mode: preserve
+      when: containerlab_recovery_source_root | length > 0
+
+    - name: Preserve standalone authoritative topology file
+      ansible.builtin.copy:
+        src: "{{ containerlab_recovery_topology_path }}"
+        dest: "{{ containerlab_recovery_bundle_source_root }}/{{ containerlab_recovery_topology_path | basename }}"
+        remote_src: true
+        mode: "0640"
+      when: containerlab_recovery_source_root | length == 0
+
+    - name: Read Containerlab version metadata
+      ansible.builtin.command:
+        argv:
+          - containerlab
+          - version
+          - --json
+      register: containerlab_recovery_version
+      changed_when: false
+
+    - name: Record Containerlab version metadata
+      ansible.builtin.copy:
+        dest: "{{ containerlab_recovery_bundle_root }}/containerlab-version.json"
+        content: "{{ containerlab_recovery_version.stdout | trim }}\n"
+        mode: "0640"
+
+    - name: Capture native lab inspection metadata
+      ansible.builtin.command:
+        argv:
+          - containerlab
+          - inspect
+          - -t
+          - "{{ containerlab_recovery_topology_path }}"
+          - -f
+          - json
+      environment:
+        CLAB_VERSION_CHECK: "{{ 'disable' if containerlab_recovery_disable_version_check | bool else '' }}"
+        CLAB_LABDIR_BASE: "{{ containerlab_recovery_labdir_base }}"
+      register: containerlab_recovery_inspect
+      changed_when: false
+      failed_when: false
+
+    - name: Record native inspection metadata
+      ansible.builtin.copy:
+        dest: "{{ containerlab_recovery_bundle_root }}/containerlab-inspect.json"
+        content: "{{ containerlab_recovery_inspect.stdout | default('') | trim }}\n"
+        mode: "0640"
+      when: containerlab_recovery_inspect.rc == 0
+
+    - name: Create saved-configuration directory
+      ansible.builtin.file:
+        path: "{{ containerlab_recovery_bundle_source_root }}/startup-configs"
+        state: directory
+        mode: "0750"
+      when:
+        - containerlab_recovery_mode != 'ephemeral'
+        - containerlab_recovery_save_configs | bool
+
+    - name: Ask Containerlab to save and copy supported configurations
+      ansible.builtin.command:
+        argv:
+          - containerlab
+          - save
+          - -t
+          - "{{ containerlab_recovery_topology_path }}"
+          - --copy
+          - "{{ containerlab_recovery_bundle_source_root }}/startup-configs"
+      environment:
+        CLAB_VERSION_CHECK: "{{ 'disable' if containerlab_recovery_disable_version_check | bool else '' }}"
+        CLAB_LABDIR_BASE: "{{ containerlab_recovery_labdir_base }}"
+      register: containerlab_recovery_save
+      changed_when: containerlab_recovery_save.rc == 0
+      failed_when: >-
+        containerlab_recovery_save_configs_required | bool and containerlab_recovery_save.rc != 0
+      when:
+        - containerlab_recovery_mode != 'ephemeral'
+        - containerlab_recovery_save_configs | bool
+
+    - name: Create native snapshot directory
+      ansible.builtin.file:
+        path: "{{ containerlab_recovery_bundle_root }}/snapshots"
+        state: directory
+        mode: "0750"
+      when: containerlab_recovery_mode == 'snapshot'
+
+    - name: Ask Containerlab to save supported vrnetlab snapshots
+      ansible.builtin.command:
+        argv: >-
+          {{ ['containerlab', 'tools', 'snapshot', 'save', '-t', containerlab_recovery_topology_path,
+              '--output-dir', containerlab_recovery_bundle_root ~ '/snapshots',
+              '--timeout', containerlab_recovery_snapshot_timeout, '--format', 'json']
+             + (['--node-filter', containerlab_recovery_snapshot_node_filter]
+                if containerlab_recovery_snapshot_node_filter | length > 0 else []) }}
+      environment:
+        CLAB_VERSION_CHECK: "{{ 'disable' if containerlab_recovery_disable_version_check | bool else '' }}"
+        CLAB_LABDIR_BASE: "{{ containerlab_recovery_labdir_base }}"
+      register: containerlab_recovery_snapshot
+      changed_when: true
+      when: containerlab_recovery_mode == 'snapshot'
+
+    - name: Validate explicit lab-directory request
+      ansible.builtin.assert:
+        that:
+          - containerlab_recovery_lab_dir | length > 0
+        fail_msg: >-
+          Set containerlab_recovery_lab_dir explicitly when requesting lab-directory retention;
+          the role will not guess Containerlab internal ownership paths.
+      when: containerlab_recovery_include_lab_dir | bool
+
+    - name: Preserve explicitly declared native lab directory
+      ansible.builtin.copy:
+        src: "{{ containerlab_recovery_lab_dir }}"
+        dest: "{{ containerlab_recovery_bundle_root }}/lab-directory/"
+        remote_src: true
+        mode: preserve
+      when: containerlab_recovery_include_lab_dir | bool
+
+    - name: Create additional-artifact directory
+      ansible.builtin.file:
+        path: "{{ containerlab_recovery_bundle_root }}/additional"
+        state: directory
+        mode: "0750"
+      when: containerlab_recovery_additional_paths | length > 0
+
+    - name: Preserve explicitly declared additional recovery paths
+      ansible.builtin.copy:
+        src: "{{ item }}"
+        dest: "{{ containerlab_recovery_bundle_root }}/additional/"
+        remote_src: true
+        mode: preserve
+      loop: "{{ containerlab_recovery_additional_paths }}"
+      when: containerlab_recovery_additional_paths | length > 0
+
+    - name: Record recovery manifest
+      ansible.builtin.copy:
+        dest: "{{ containerlab_recovery_bundle_root }}/hybridops-recovery-manifest.json"
+        mode: "0640"
+        content: >-
+          {{ {
+            'schema': 'hybridops.containerlab.recovery/v1',
+            'mode': containerlab_recovery_mode,
+            'topology_relpath': containerlab_recovery_manifest_topology_relpath,
+            'topology_sha256': containerlab_recovery_topology.stat.checksum,
+            'source_root_included': (containerlab_recovery_source_root | length > 0),
+            'containerlab_version': (containerlab_recovery_version.stdout | from_json).version,
+            'image_refs': containerlab_recovery_image_refs,
+            'labdir_base': containerlab_recovery_labdir_base,
+            'native_config_save_attempted': (
+              containerlab_recovery_mode != 'ephemeral'
+              and containerlab_recovery_save_configs | bool
+            ),
+            'native_config_save_rc': (containerlab_recovery_save.rc | default(None)),
+            'native_snapshots_requested': (containerlab_recovery_mode == 'snapshot'),
+            'lab_directory_included': (containerlab_recovery_include_lab_dir | bool),
+            'additional_paths_count': (containerlab_recovery_additional_paths | length)
+          } | to_nice_json }}
+
+    - name: Create portable recovery archive
+      ansible.builtin.command:
+        argv:
+          - tar
+          - -C
+          - "{{ containerlab_recovery_remote_root }}"
+          - -czf
+          - "{{ containerlab_recovery_remote_root }}/{{ containerlab_recovery_bundle_name }}.tar.gz"
+          - "{{ containerlab_recovery_bundle_name }}"
+      changed_when: true
+
+    - name: Read recovery archive checksum
+      ansible.builtin.stat:
+        path: "{{ containerlab_recovery_remote_root }}/{{ containerlab_recovery_bundle_name }}.tar.gz"
+        checksum_algorithm: sha256
+      register: containerlab_recovery_archive_stat
+
+    - name: Ensure controller recovery directory exists
+      ansible.builtin.file:
+        path: "{{ containerlab_recovery_controller_dir }}"
+        state: directory
+        mode: "0700"
+      delegate_to: localhost
+      become: false
+
+    - name: Retain recovery archive off the disposable host
+      ansible.builtin.fetch:
+        src: "{{ containerlab_recovery_remote_root }}/{{ containerlab_recovery_bundle_name }}.tar.gz"
+        dest: "{{ containerlab_recovery_controller_dir }}/{{ containerlab_recovery_bundle_name }}.tar.gz"
+        flat: true
+        fail_on_missing: true
+
+    - name: Read retained controller archive checksum
+      ansible.builtin.stat:
+        path: "{{ containerlab_recovery_controller_dir }}/{{ containerlab_recovery_bundle_name }}.tar.gz"
+        checksum_algorithm: sha256
+      register: containerlab_recovery_controller_archive_stat
+      delegate_to: localhost
+      become: false
+
+    - name: Verify off-host recovery archive integrity
+      ansible.builtin.assert:
+        that:
+          - containerlab_recovery_controller_archive_stat.stat.exists
+          - >-
+            containerlab_recovery_controller_archive_stat.stat.checksum ==
+            containerlab_recovery_archive_stat.stat.checksum
+        fail_msg: >-
+          The Containerlab recovery archive was not retained intact off the
+          disposable host; host destruction must remain blocked.
+      delegate_to: localhost
+      become: false
+
+    - name: Publish recovery export result
+      ansible.builtin.set_fact:
+        containerlab_recovery_result:
+          action: export
+          mode: "{{ containerlab_recovery_mode }}"
+          remote_archive: >-
+            {{ containerlab_recovery_remote_root
+               ~ '/' ~ containerlab_recovery_bundle_name ~ '.tar.gz' }}
+          controller_archive: >-
+            {{ containerlab_recovery_controller_dir
+               ~ '/' ~ containerlab_recovery_bundle_name ~ '.tar.gz' }}
+          sha256: "{{ containerlab_recovery_archive_stat.stat.checksum }}"
+          topology_sha256: "{{ containerlab_recovery_topology.stat.checksum }}"
+          image_refs: "{{ containerlab_recovery_image_refs }}"
+          labdir_base: "{{ containerlab_recovery_labdir_base }}"
+          safe_for_host_destroy: true
+
+- name: Import Containerlab recovery products
+  when: containerlab_recovery_action == 'import'
+  block:
+    - name: Validate recovery archive input
+      ansible.builtin.assert:
+        that:
+          - containerlab_recovery_archive_path | length > 0
+        fail_msg: "containerlab_recovery_archive_path is required for import."
+
+    - name: Create import directory
+      ansible.builtin.file:
+        path: "{{ containerlab_recovery_remote_root }}/import"
+        state: directory
+        mode: "0750"
+
+    - name: Stage recovery archive on fresh host
+      ansible.builtin.copy:
+        src: "{{ containerlab_recovery_archive_path }}"
+        dest: "{{ containerlab_recovery_remote_root }}/import/recovery.tar.gz"
+        mode: "0640"
+        force: "{{ containerlab_recovery_overwrite | bool }}"
+
+    - name: Read imported archive checksum
+      ansible.builtin.stat:
+        path: "{{ containerlab_recovery_remote_root }}/import/recovery.tar.gz"
+        checksum_algorithm: sha256
+      register: containerlab_recovery_import_stat
+
+    - name: Verify expected recovery checksum
+      ansible.builtin.assert:
+        that:
+          - containerlab_recovery_import_stat.stat.checksum == containerlab_recovery_expected_sha256
+        fail_msg: "Imported Containerlab recovery archive checksum does not match."
+      when: containerlab_recovery_expected_sha256 | length > 0
+
+    - name: Extract recovery archive
+      ansible.builtin.unarchive:
+        src: "{{ containerlab_recovery_remote_root }}/import/recovery.tar.gz"
+        dest: "{{ containerlab_recovery_remote_root }}/import"
+        remote_src: true
+
+    - name: Locate restored recovery manifest
+      ansible.builtin.find:
+        paths: "{{ containerlab_recovery_remote_root }}/import"
+        recurse: true
+        patterns:
+          - hybridops-recovery-manifest.json
+        file_type: file
+      register: containerlab_recovery_import_manifest
+
+    - name: Verify one recovery manifest is present
+      ansible.builtin.assert:
+        that:
+          - containerlab_recovery_import_manifest.matched == 1
+        fail_msg: "Recovery archive must contain exactly one HybridOps recovery manifest."
+
+    - name: Read restored recovery manifest
+      ansible.builtin.slurp:
+        src: "{{ containerlab_recovery_import_manifest.files[0].path }}"
+      register: containerlab_recovery_import_manifest_raw
+
+    - name: Resolve restored recovery manifest
+      ansible.builtin.set_fact:
+        containerlab_recovery_import_manifest_data: >-
+          {{ containerlab_recovery_import_manifest_raw.content | b64decode | from_json }}
+        containerlab_recovery_import_bundle_root: >-
+          {{ containerlab_recovery_import_manifest.files[0].path | dirname }}
+
+    - name: Resolve restored Containerlab source and topology paths
+      ansible.builtin.set_fact:
+        containerlab_recovery_import_source_root: >-
+          {{ containerlab_recovery_import_bundle_root ~
+             (
+               '/lab-source'
+               if containerlab_recovery_import_manifest_data.source_root_included
+                  | default(false)
+               else ''
+             ) }}
+        containerlab_recovery_import_topology_path: >-
+          {{ containerlab_recovery_import_bundle_root ~
+             (
+               '/lab-source'
+               if containerlab_recovery_import_manifest_data.source_root_included
+                  | default(false)
+               else ''
+             ) ~
+             '/' ~ containerlab_recovery_import_manifest_data.topology_relpath }}
+
+    - name: Verify restored authoritative topology
+      ansible.builtin.stat:
+        path: "{{ containerlab_recovery_import_topology_path }}"
+        checksum_algorithm: sha256
+      register: containerlab_recovery_import_topology_stat
+
+    - name: Check restored topology identity
+      ansible.builtin.assert:
+        that:
+          - containerlab_recovery_import_topology_stat.stat.exists
+          - containerlab_recovery_import_topology_stat.stat.isreg
+          - >-
+            containerlab_recovery_import_topology_stat.stat.checksum ==
+            containerlab_recovery_import_manifest_data.topology_sha256
+        fail_msg: "Restored Containerlab topology does not match the recovery manifest."
+
+    - name: Read restored native snapshot directory
+      ansible.builtin.stat:
+        path: "{{ containerlab_recovery_import_bundle_root }}/snapshots"
+      register: containerlab_recovery_import_snapshots
+
+    - name: Publish recovery import result
+      ansible.builtin.set_fact:
+        containerlab_recovery_result:
+          action: import
+          mode: "{{ containerlab_recovery_import_manifest_data.mode }}"
+          sha256: "{{ containerlab_recovery_import_stat.stat.checksum }}"
+          topology_path: "{{ containerlab_recovery_import_topology_path }}"
+          source_root: "{{ containerlab_recovery_import_source_root }}"
+          snapshot_dir: >-
+            {{ containerlab_recovery_import_bundle_root ~ '/snapshots'
+               if (
+                 containerlab_recovery_import_snapshots.stat.exists
+                 and containerlab_recovery_import_snapshots.stat.isdir
+               )
+               else '' }}
+          manifest_path: "{{ containerlab_recovery_import_manifest.files[0].path }}"
+          image_refs: "{{ containerlab_recovery_import_manifest_data.image_refs | default([]) }}"
+          labdir_base: >-
+            {{ containerlab_recovery_import_manifest_data.labdir_base
+               | default(containerlab_recovery_labdir_base) }}
+          restore_delegated_to_containerlab: true

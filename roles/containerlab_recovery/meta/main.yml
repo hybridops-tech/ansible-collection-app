@@ -1,0 +1,18 @@
+---
+galaxy_info:
+  author: HybridOps.Tech
+  description: Export and import Containerlab-native recovery products around disposable hosts
+  license: MIT
+  min_ansible_version: "2.15"
+  platforms:
+    - name: Ubuntu
+      versions:
+        - jammy
+        - noble
+  galaxy_tags:
+    - networking
+    - containerlab
+    - recovery
+    - backup
+    - finops
+dependencies: []

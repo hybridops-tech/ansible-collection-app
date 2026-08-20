@@ -1,0 +1,17 @@
+---
+galaxy_info:
+  author: HybridOps.Tech
+  description: Verify Containerlab host, topology, image, and optional KVM readiness
+  license: MIT
+  min_ansible_version: "2.15"
+  platforms:
+    - name: Ubuntu
+      versions:
+        - jammy
+        - noble
+  galaxy_tags:
+    - networking
+    - containerlab
+    - healthcheck
+    - virtualization
+dependencies: []

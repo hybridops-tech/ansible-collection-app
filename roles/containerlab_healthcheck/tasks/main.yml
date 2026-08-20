@@ -1,0 +1,230 @@
+---
+- name: Read Docker runtime state
+  ansible.builtin.command:
+    argv:
+      - docker
+      - info
+      - --format
+      - "{{ '{{json .ServerVersion}}' }}"
+  register: containerlab_healthcheck_docker
+  changed_when: false
+
+- name: Read Containerlab version
+  ansible.builtin.command:
+    argv:
+      - containerlab
+      - version
+      - --short
+  register: containerlab_healthcheck_version
+  changed_when: false
+
+- name: Verify requested Containerlab version
+  ansible.builtin.assert:
+    that:
+      - >-
+        containerlab_healthcheck_version.stdout | trim
+        == containerlab_healthcheck_expected_version
+    fail_msg: >-
+      Containerlab version {{ containerlab_healthcheck_version.stdout | trim }}
+      does not match {{ containerlab_healthcheck_expected_version }}.
+  when: containerlab_healthcheck_expected_version | length > 0
+
+- name: Read KVM device state
+  ansible.builtin.stat:
+    path: /dev/kvm
+  register: containerlab_healthcheck_kvm
+  when: containerlab_healthcheck_require_kvm | bool
+
+- name: Verify KVM when required
+  ansible.builtin.assert:
+    that:
+      - containerlab_healthcheck_kvm.stat.exists
+      - containerlab_healthcheck_kvm.stat.ischr
+    fail_msg: "Containerlab workload requires KVM but /dev/kvm is unavailable."
+  when: containerlab_healthcheck_require_kvm | bool
+
+- name: Inspect declared images
+  ansible.builtin.command:
+    argv:
+      - docker
+      - image
+      - inspect
+      - "{{ item }}"
+  loop: "{{ containerlab_healthcheck_required_images }}"
+  register: containerlab_healthcheck_image_initial
+  changed_when: false
+  failed_when: false
+  when: containerlab_healthcheck_required_images | length > 0
+
+- name: Pull missing declared images when allowed
+  ansible.builtin.command:
+    argv:
+      - docker
+      - pull
+      - "{{ item.item }}"
+  loop: "{{ containerlab_healthcheck_image_initial.results | default([]) }}"
+  when:
+    - containerlab_healthcheck_pull_missing_images | bool
+    - item.rc != 0
+  changed_when: true
+
+- name: Recheck declared images
+  ansible.builtin.command:
+    argv:
+      - docker
+      - image
+      - inspect
+      - "{{ item }}"
+  loop: "{{ containerlab_healthcheck_required_images }}"
+  register: containerlab_healthcheck_image_final
+  changed_when: false
+  failed_when: false
+  when: containerlab_healthcheck_required_images | length > 0
+
+- name: Verify declared images are available
+  ansible.builtin.assert:
+    that:
+      - >-
+        containerlab_healthcheck_image_final.results
+        | selectattr('rc', 'ne', 0)
+        | list
+        | length == 0
+    fail_msg: "One or more required Containerlab image references are unavailable."
+  when: containerlab_healthcheck_required_images | length > 0
+
+- name: Read topology state
+  ansible.builtin.stat:
+    path: "{{ containerlab_healthcheck_topology_path }}"
+  register: containerlab_healthcheck_topology
+  when: containerlab_healthcheck_topology_path | length > 0
+
+- name: Verify topology exists
+  ansible.builtin.assert:
+    that:
+      - containerlab_healthcheck_topology.stat.exists
+      - containerlab_healthcheck_topology.stat.isreg
+  when: containerlab_healthcheck_topology_path | length > 0
+
+- name: Validate topology using Containerlab
+  ansible.builtin.command:
+    argv:
+      - containerlab
+      - validate
+      - -t
+      - "{{ containerlab_healthcheck_topology_path }}"
+  environment:
+    CLAB_VERSION_CHECK: >-
+      {{ 'disable' if containerlab_healthcheck_disable_version_check | bool else '' }}
+    CLAB_LABDIR_BASE: "{{ containerlab_healthcheck_labdir_base }}"
+  register: containerlab_healthcheck_validate
+  changed_when: false
+  when: containerlab_healthcheck_topology_path | length > 0
+
+- name: Require a deployed-lab verification selector
+  ansible.builtin.assert:
+    that:
+      - >-
+        (containerlab_healthcheck_topology_path | length > 0) or
+        (containerlab_healthcheck_lab_name | length > 0) or
+        (containerlab_healthcheck_allow_single_lab_discovery | bool)
+    fail_msg: >-
+      A topology path, lab name or explicit dedicated-host discovery policy is
+      required when deployed-lab verification is enabled.
+  when: containerlab_healthcheck_require_deployed_lab | bool
+
+- name: Inspect deployed lab using Containerlab
+  ansible.builtin.command:
+    argv: >-
+      {{
+        ['containerlab', 'inspect']
+        + (
+          ['-t', containerlab_healthcheck_topology_path]
+          if containerlab_healthcheck_topology_path | length > 0
+          else (
+            ['--name', containerlab_healthcheck_lab_name]
+            if containerlab_healthcheck_lab_name | length > 0
+            else ['--all']
+          )
+        )
+        + ['-f', 'json']
+      }}
+  environment:
+    CLAB_VERSION_CHECK: >-
+      {{ 'disable' if containerlab_healthcheck_disable_version_check | bool else '' }}
+    CLAB_LABDIR_BASE: "{{ containerlab_healthcheck_labdir_base }}"
+  register: containerlab_healthcheck_inspect
+  changed_when: false
+  when: containerlab_healthcheck_require_deployed_lab | bool
+
+- name: Resolve deployed Containerlab nodes
+  ansible.builtin.set_fact:
+    containerlab_healthcheck_inspect_data: >-
+      {{ containerlab_healthcheck_inspect.stdout | from_json }}
+    containerlab_healthcheck_nodes: >-
+      {{
+        (containerlab_healthcheck_inspect.stdout | from_json)
+        | dict2items
+        | map(attribute='value')
+        | flatten
+        | list
+      }}
+  when: containerlab_healthcheck_require_deployed_lab | bool
+
+- name: Verify dedicated host contains exactly one Containerlab lab
+  ansible.builtin.assert:
+    that:
+      - containerlab_healthcheck_inspect_data | length == 1
+    fail_msg: >-
+      Dedicated-host verification expected exactly one Containerlab lab on the
+      managed execution host.
+  when:
+    - containerlab_healthcheck_require_deployed_lab | bool
+    - containerlab_healthcheck_allow_single_lab_discovery | bool
+    - containerlab_healthcheck_topology_path | length == 0
+    - containerlab_healthcheck_lab_name | length == 0
+
+- name: Verify deployed Containerlab nodes are running and healthy when health exists
+  ansible.builtin.assert:
+    that:
+      - containerlab_healthcheck_nodes | length > 0
+      - >-
+        containerlab_healthcheck_nodes
+        | rejectattr('state', 'equalto', 'running')
+        | list
+        | length == 0
+      - >-
+        containerlab_healthcheck_nodes
+        | selectattr('status', 'defined')
+        | selectattr('status', 'search', '(?i)unhealthy')
+        | list
+        | length == 0
+      - >-
+        containerlab_healthcheck_nodes
+        | selectattr('status', 'defined')
+        | selectattr('status', 'search', '(?i)(^starting$|health:\\s*starting)')
+        | list
+        | length == 0
+    fail_msg: >-
+      Containerlab returned no nodes, at least one declared node is not running,
+      or a reported node health state is not ready.
+  when: containerlab_healthcheck_require_deployed_lab | bool
+
+- name: Publish Containerlab health result
+  ansible.builtin.set_fact:
+    containerlab_healthcheck_results:
+      status: ready
+      version: "{{ containerlab_healthcheck_version.stdout | trim }}"
+      docker_version: "{{ containerlab_healthcheck_docker.stdout | trim }}"
+      kvm: >-
+        {{
+          'ready'
+          if containerlab_healthcheck_require_kvm | bool
+          else 'not-required-by-contract'
+        }}
+      labdir_base: "{{ containerlab_healthcheck_labdir_base }}"
+      topology_validated: "{{ containerlab_healthcheck_topology_path | length > 0 }}"
+      deployed_lab_inspected: "{{ containerlab_healthcheck_require_deployed_lab | bool }}"
+      deployed_lab_count: >-
+        {{ containerlab_healthcheck_inspect_data | default({}) | length }}
+      deployed_node_count: >-
+        {{ containerlab_healthcheck_nodes | default([]) | length }}
