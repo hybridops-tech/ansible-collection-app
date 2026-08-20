@@ -16,8 +16,14 @@ Role-level variables and assumptions are documented in each role's `README.md`. 
 
 | Role | Purpose |
 |------|---------|
+| `containerlab` | Install and verify a pinned Containerlab runtime. |
+| `containerlab_healthcheck` | Verify runtime, KVM, images and deployed lab state. |
+| `containerlab_lab` | Validate and operate native Containerlab topologies. |
+| `containerlab_recovery` | Export and import guarded off-host recovery data. |
 | `eveng` | Install and configure EVE-NG. |
 | `gns3_healthcheck` | Validate a GNS3 server and its local compute runtime. |
+| `gns3_images` | Install authorised QEMU and IOU images and register templates. |
+| `gns3_lab_archive` | Export and restore GNS3 projects and writable node state. |
 | `gns3_server` | Install and configure a remote GNS3 server. |
 | `gns3_starter_lab` | Create a zero-image GNS3 teaching topology. |
 | `jenkins_agents_docker` | Configure Docker-based Jenkins agents. |
