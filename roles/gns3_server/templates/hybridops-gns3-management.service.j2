@@ -1,0 +1,12 @@
+[Unit]
+Description=HybridOps GNS3 management bridge
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/hybridops-gns3-management
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target

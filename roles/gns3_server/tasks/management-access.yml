@@ -1,0 +1,118 @@
+---
+- name: Validate GNS3 management settings
+  ansible.builtin.assert:
+    that:
+      - gns3_server_management_bridge is match('^[A-Za-z0-9_.-]{1,15}$')
+      - gns3_server_management_cidr is match('^[0-9.]+/[0-9]+$')
+      - gns3_server_management_subnet is match('^[0-9.]+/[0-9]+$')
+      - gns3_server_management_dhcp_start is match('^[0-9.]+$')
+      - gns3_server_management_dhcp_end is match('^[0-9.]+$')
+      - gns3_server_management_lease_file is match('^/')
+      - gns3_server_management_access_ssh_user is match('^[a-z_][a-z0-9_-]*[$]?$')
+    fail_msg: GNS3 management access requires a valid Linux bridge and IPv4 settings.
+
+- name: Install GNS3 management packages
+  ansible.builtin.apt:
+    name:
+      - bridge-utils
+      - dnsmasq
+      - iptables
+      - openssh-server
+      - python3
+    state: present
+    update_cache: true
+
+- name: Install GNS3 management bridge helper
+  ansible.builtin.template:
+    src: hybridops-gns3-management.sh.j2
+    dest: /usr/local/sbin/hybridops-gns3-management
+    owner: root
+    group: root
+    mode: "0755"
+  notify: Restart GNS3 management access
+
+- name: Install GNS3 management bridge service
+  ansible.builtin.template:
+    src: hybridops-gns3-management.service.j2
+    dest: /etc/systemd/system/hybridops-gns3-management.service
+    owner: root
+    group: root
+    mode: "0644"
+  notify: Restart GNS3 management access
+
+- name: Configure DHCP for the GNS3 management plane
+  ansible.builtin.template:
+    src: gns3-management-dnsmasq.conf.j2
+    dest: /etc/dnsmasq.d/hybridops-gns3-management.conf
+    owner: root
+    group: root
+    mode: "0644"
+  notify: Restart GNS3 management dnsmasq
+
+- name: Create the OpenSSH configuration directory
+  ansible.builtin.file:
+    path: /etc/ssh/sshd_config.d
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Enable OpenSSH configuration fragments
+  ansible.builtin.lineinfile:
+    path: /etc/ssh/sshd_config
+    line: Include /etc/ssh/sshd_config.d/*.conf
+    regexp: '^Include\s+/etc/ssh/sshd_config\.d/\*\.conf$'
+    insertbefore: BOF
+  notify: Restart GNS3 management sshd
+
+- name: Permit the GNS3 operator tunnel
+  ansible.builtin.template:
+    src: hybridops-management-sshd.conf.j2
+    dest: /etc/ssh/sshd_config.d/60-hybridops-management.conf
+    owner: root
+    group: root
+    mode: "0644"
+  notify: Restart GNS3 management sshd
+
+- name: Install the private route helper
+  ansible.builtin.template:
+    src: hybridops-lab-route.sh.j2
+    dest: /usr/local/sbin/hybridops-lab-route
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Authorise the operator route helper
+  ansible.builtin.template:
+    src: hybridops-lab-route.sudoers.j2
+    dest: /etc/sudoers.d/hybridops-lab-route
+    owner: root
+    group: root
+    mode: "0440"
+    validate: /usr/sbin/visudo -cf %s
+
+- name: Validate the OpenSSH management configuration
+  ansible.builtin.command: /usr/sbin/sshd -t
+  changed_when: false
+
+- name: Enable GNS3 management bridge
+  ansible.builtin.systemd:
+    name: hybridops-gns3-management.service
+    enabled: true
+    state: started
+    daemon_reload: true
+
+- name: Apply GNS3 management changes
+  ansible.builtin.meta: flush_handlers
+
+- name: Read GNS3 management bridge state
+  ansible.builtin.command: >-
+    ip -4 -brief address show dev {{ gns3_server_management_bridge }}
+  register: gns3_server_management_bridge_state
+  changed_when: false
+
+- name: Verify GNS3 management access
+  ansible.builtin.assert:
+    that:
+      - gns3_server_management_cidr.split('/')[0] in gns3_server_management_bridge_state.stdout
+    fail_msg: GNS3 management bridge is not ready.

@@ -19,13 +19,39 @@
       - item.filename | default('') | length > 0
       - (item.filename | basename) == item.filename
       - item.checksum | default('') is match('^sha256:[0-9a-fA-F]{64}$')
-      - item.disk_type | default('hda') in ['hda', 'cdrom']
+      - item.type | default('qemu') in ['qemu', 'iou']
     fail_msg: >-
       Each GNS3 image requires a name, URL, safe filename, SHA-256 checksum,
-      and disk_type of hda or cdrom.
+      and type of qemu or iou.
   loop: "{{ gns3_images_items }}"
   loop_control:
     label: "{{ item.name | default('invalid image') }}"
+
+- name: Validate GNS3 QEMU image declarations
+  ansible.builtin.assert:
+    that:
+      - item.disk_type | default('hda') in ['hda', 'cdrom']
+    fail_msg: "GNS3 QEMU image disk_type must be hda or cdrom."
+  loop: "{{ gns3_images_items }}"
+  loop_control:
+    label: "{{ item.name | default('invalid image') }}"
+  when: item.type | default('qemu') == 'qemu'
+
+- name: Validate GNS3 IOU image declarations
+  ansible.builtin.assert:
+    that:
+      - item.filename is match('^.+\.bin$')
+      - >-
+        item.architecture | default(
+          'i386' if item.filename is match('(?i)^i86bi') else 'x86_64'
+        ) in ['i386', 'x86_64']
+    fail_msg: >-
+      GNS3 IOU images require a .bin filename and architecture of i386 or
+      x86_64.
+  loop: "{{ gns3_images_items }}"
+  loop_control:
+    label: "{{ item.name | default('invalid image') }}"
+  when: item.type | default('qemu') == 'iou'
 
 - name: Reject duplicate GNS3 image declarations
   ansible.builtin.assert:
@@ -38,6 +64,91 @@
         == (gns3_images_items | length)
     fail_msg: "GNS3 image names and filenames must be unique."
 
+- name: Resolve whether GNS3 IOU support is requested
+  ansible.builtin.set_fact:
+    gns3_images_iou_requested: >-
+      {{
+        gns3_images_items
+        | selectattr('type', 'defined')
+        | selectattr('type', 'equalto', 'iou')
+        | list
+        | length > 0
+      }}
+    gns3_images_iou_i386_requested: >-
+      {{
+        (
+          gns3_images_items
+          | selectattr('type', 'defined')
+          | selectattr('type', 'equalto', 'iou')
+          | selectattr('architecture', 'defined')
+          | selectattr('architecture', 'equalto', 'i386')
+          | list
+          | length > 0
+        )
+        or
+        (
+          gns3_images_items
+          | selectattr('type', 'defined')
+          | selectattr('type', 'equalto', 'iou')
+          | selectattr('architecture', 'undefined')
+          | selectattr('filename', 'match', '(?i)^i86bi')
+          | list
+          | length > 0
+        )
+      }}
+
+- name: Require authorised GNS3 IOU licence material
+  ansible.builtin.assert:
+    that:
+      - gns3_images_iourc_content | string | length > 0
+    fail_msg: >-
+      GNS3 IOU images require an authorised iourc file in the HybridOps
+      environment vault.
+  when: gns3_images_iou_requested | bool
+
+- name: Validate GNS3 IOU licence material
+  ansible.builtin.assert:
+    that:
+      - gns3_images_iourc_content is string
+      - gns3_images_iourc_content | trim is match('(?s)^\[license\]\s+.+')
+    fail_msg: "The supplied GNS3 IOU licence file is not a valid iourc document."
+  when: gns3_images_iou_requested | bool
+  no_log: true
+
+- name: Read enabled foreign package architectures
+  ansible.builtin.command:
+    argv:
+      - dpkg
+      - --print-foreign-architectures
+  register: gns3_images_foreign_architectures
+  changed_when: false
+  when:
+    - gns3_images_iou_i386_requested | bool
+    - gns3_images_install_iou_runtime | bool
+
+- name: Enable i386 packages for older IOU images
+  ansible.builtin.command:
+    argv:
+      - dpkg
+      - --add-architecture
+      - i386
+  changed_when: true
+  when:
+    - gns3_images_iou_i386_requested | bool
+    - gns3_images_install_iou_runtime | bool
+    - "'i386' not in gns3_images_foreign_architectures.stdout_lines"
+
+- name: Install GNS3 IOU runtime support
+  ansible.builtin.apt:
+    name: "{{ gns3_images_iou_package }}"
+    state: present
+    update_cache: true
+  environment:
+    DEBIAN_FRONTEND: noninteractive
+  when:
+    - gns3_images_iou_requested | bool
+    - gns3_images_install_iou_runtime | bool
+
 - name: Ensure GNS3 QEMU image directory exists
   ansible.builtin.file:
     path: "{{ gns3_images_qemu_dir }}"
@@ -45,6 +156,60 @@
     owner: "{{ gns3_images_owner }}"
     group: "{{ gns3_images_group }}"
     mode: "0750"
+
+- name: Ensure GNS3 IOU image directory exists
+  ansible.builtin.file:
+    path: "{{ gns3_images_iou_dir }}"
+    state: directory
+    owner: "{{ gns3_images_owner }}"
+    group: "{{ gns3_images_group }}"
+    mode: "0750"
+  when: gns3_images_iou_requested | bool
+
+- name: Install operator-supplied GNS3 IOU licence material
+  ansible.builtin.copy:
+    dest: "{{ gns3_images_iourc_path }}"
+    content: "{{ gns3_images_iourc_content | trim }}\n"
+    owner: "{{ gns3_images_owner }}"
+    group: "{{ gns3_images_group }}"
+    mode: "0600"
+  when: gns3_images_iou_requested | bool
+  no_log: true
+
+- name: Verify GNS3 IOU licence placement
+  ansible.builtin.stat:
+    path: "{{ gns3_images_iourc_path }}"
+  register: gns3_images_iourc_stat
+  when: gns3_images_iou_requested | bool
+
+- name: Require protected GNS3 IOU licence material
+  ansible.builtin.assert:
+    that:
+      - gns3_images_iourc_stat.stat.isreg | default(false)
+      - gns3_images_iourc_stat.stat.mode == '0600'
+      - gns3_images_iourc_stat.stat.pw_name == gns3_images_owner
+      - gns3_images_iourc_stat.stat.gr_name == gns3_images_group
+      - gns3_images_iourc_stat.stat.size | default(0) > 0
+    fail_msg: "The operator-supplied GNS3 IOU licence was not installed securely."
+  when: gns3_images_iou_requested | bool
+
+- name: Validate GNS3 IOU licence host entry
+  ansible.builtin.command:
+    argv:
+      - python3
+      - -c
+      - >-
+        import configparser, pathlib, socket, sys;
+        p = pathlib.Path(sys.argv[1]);
+        c = configparser.ConfigParser();
+        c.read(p, encoding='utf-8');
+        h = socket.gethostname();
+        v = c.get('license', h, fallback='');
+        raise SystemExit(0 if len(v) == 17 and v.endswith(';') else 1)
+      - "{{ gns3_images_iourc_path }}"
+  changed_when: false
+  when: gns3_images_iou_requested | bool
+  no_log: true
 
 - name: Read registered GNS3 templates
   ansible.builtin.uri:
@@ -63,6 +228,7 @@
       {{ {
         'status': 'ready',
         'requested_count': gns3_images_items | length,
+        'iou_license_ready': gns3_images_iou_requested | bool,
         'images': []
       } }}
 

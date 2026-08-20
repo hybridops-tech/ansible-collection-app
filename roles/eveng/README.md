@@ -79,6 +79,26 @@ It does not add another cloud interface or expose lab nodes publicly. Attach a
 lab node to the corresponding Cloud network when outbound package access is
 required; ordinary Bridge networks remain isolated.
 
+### Private management access
+
+Workstation automation uses a separate host-reachable bridge. Lab devices
+connect a management interface to `Cloud8`; the EVE-NG host assigns an address
+without exposing the subnet externally.
+
+```yaml
+eveng_management_access_enabled: true
+eveng_management_bridge: pnet8
+eveng_management_cidr: 172.29.128.1/24
+eveng_management_subnet: 172.29.128.0/24
+eveng_management_dhcp_start: 172.29.128.50
+eveng_management_dhcp_end: 172.29.128.200
+eveng_management_access_ssh_user: opsadmin
+```
+
+The declared operator may open a point-to-point SSH tunnel into this subnet;
+the route helper cannot target any other network. Static devices must route
+through the address declared by `eveng_management_cidr`.
+
 ### Credentials
 
 ```yaml

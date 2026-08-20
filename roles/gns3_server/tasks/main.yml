@@ -79,6 +79,10 @@
   environment:
     DEBIAN_FRONTEND: noninteractive
 
+- name: Configure private GNS3 management access
+  ansible.builtin.include_tasks: management-access.yml
+  when: gns3_server_management_access_enabled | bool
+
 - name: Create GNS3 service group
   ansible.builtin.group:
     name: "{{ gns3_server_group }}"

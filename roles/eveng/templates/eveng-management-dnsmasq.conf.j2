@@ -1,0 +1,9 @@
+# Managed by HybridOps. DHCP and DNS for the private EVE-NG management plane.
+interface={{ eveng_management_bridge }}
+bind-dynamic
+dhcp-leasefile={{ eveng_management_lease_file }}
+dhcp-range={{ eveng_management_dhcp_start }},{{ eveng_management_dhcp_end }},{{ eveng_management_dhcp_lease }}
+dhcp-option=option:router,{{ eveng_management_cidr.split('/')[0] }}
+dhcp-option=option:dns-server,{{ eveng_management_cidr.split('/')[0] }}
+domain-needed
+bogus-priv

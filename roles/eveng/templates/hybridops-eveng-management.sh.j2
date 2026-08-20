@@ -1,0 +1,14 @@
+#!/usr/bin/env bash
+# Managed by HybridOps. Maintains the host-side EVE-NG management bridge.
+
+set -euo pipefail
+
+bridge={{ eveng_management_bridge | quote }}
+bridge_cidr={{ eveng_management_cidr | quote }}
+
+if ! ip link show "${bridge}" >/dev/null 2>&1; then
+  ip link add name "${bridge}" type bridge
+fi
+
+ip address replace "${bridge_cidr}" dev "${bridge}"
+ip link set "${bridge}" up

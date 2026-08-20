@@ -7,7 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-- No unreleased changes yet.
+### Added
+
+- Added opt-in private management bridges with DHCP lease evidence for EVE-NG
+  and GNS3 device automation access, including a subnet-scoped OpenSSH tunnel
+  for direct Linux and WSL routing.
+- Added checksum-verified GNS3 IOU image placement, protected operator-supplied
+  licence handling, template registration, and support for older 32-bit images.
 
 ## [0.1.8] - 2026-07-19
 

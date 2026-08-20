@@ -51,6 +51,13 @@
             mode: "0640"
             content: "test base image\n"
 
+        - name: Write excluded IOU licence fixture
+          ansible.builtin.copy:
+            dest: "{{ test_root }}/.iourc"
+            mode: "0600"
+            content: "[license]\ntest-host = 0000000000000000;\n"
+          no_log: true
+
     - name: Export test GNS3 state
       ansible.builtin.include_role:
         name: hybridops.app.gns3_lab_archive
@@ -92,6 +99,11 @@
           - >-
             gns3_lab_archive_test_members.stdout_lines
             | select('match', '^images(/|$)')
+            | list
+            | length == 0
+          - >-
+            gns3_lab_archive_test_members.stdout_lines
+            | select('match', '^\.iourc$')
             | list
             | length == 0
 
