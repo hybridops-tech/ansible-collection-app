@@ -1,0 +1,12 @@
+[Unit]
+Description=HybridOps EVE-NG management bridge
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/hybridops-eveng-management
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,9 @@
+# Managed by HybridOps. DHCP and DNS for the private GNS3 management plane.
+interface={{ gns3_server_management_bridge }}
+bind-dynamic
+dhcp-leasefile={{ gns3_server_management_lease_file }}
+dhcp-range={{ gns3_server_management_dhcp_start }},{{ gns3_server_management_dhcp_end }},{{ gns3_server_management_dhcp_lease }}
+dhcp-option=option:router,{{ gns3_server_management_cidr.split('/')[0] }}
+dhcp-option=option:dns-server,{{ gns3_server_management_cidr.split('/')[0] }}
+domain-needed
+bogus-priv

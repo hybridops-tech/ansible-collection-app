@@ -27,3 +27,25 @@ gns3_server_username: "gns3"
 gns3_server_install_emulators: true
 gns3_server_require_kvm: false
 ```
+
+The server configuration retains GNS3's licence check and points IOU nodes to
+`/var/lib/gns3/.iourc`. The `gns3_images` role creates that file only when an
+operator declares an IOU image and supplies authorised licence material.
+
+Enable a private host-reachable management bridge when lab devices must be
+automated from the operator workstation:
+
+```yaml
+gns3_server_management_access_enabled: true
+gns3_server_management_bridge: hyops-mgmt0
+gns3_server_management_cidr: 172.29.130.1/24
+gns3_server_management_subnet: 172.29.130.0/24
+gns3_server_management_dhcp_start: 172.29.130.50
+gns3_server_management_dhcp_end: 172.29.130.200
+gns3_server_management_access_ssh_user: opsadmin
+```
+
+Map a GNS3 Cloud node to `hyops-mgmt0` and connect device management
+interfaces to that cloud. The server keeps the subnet private while allowing
+the declared access host to reach its devices. Static devices must route
+through the address declared by `gns3_server_management_cidr`.

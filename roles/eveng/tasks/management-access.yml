@@ -1,0 +1,118 @@
+---
+- name: Validate EVE-NG management settings
+  ansible.builtin.assert:
+    that:
+      - eveng_management_bridge is match('^pnet[1-9]$')
+      - eveng_management_cidr is match('^[0-9.]+/[0-9]+$')
+      - eveng_management_subnet is match('^[0-9.]+/[0-9]+$')
+      - eveng_management_dhcp_start is match('^[0-9.]+$')
+      - eveng_management_dhcp_end is match('^[0-9.]+$')
+      - eveng_management_lease_file is match('^/')
+      - eveng_management_access_ssh_user is match('^[a-z_][a-z0-9_-]*[$]?$')
+      - not (eveng_guest_nat_enabled | bool and eveng_management_bridge == eveng_guest_nat_bridge)
+    fail_msg: EVE-NG management access requires a distinct pnet bridge and valid IPv4 settings.
+
+- name: Install EVE-NG management packages
+  ansible.builtin.apt:
+    name:
+      - bridge-utils
+      - dnsmasq
+      - iptables
+      - openssh-server
+      - python3
+    state: present
+    update_cache: true
+
+- name: Install EVE-NG management bridge helper
+  ansible.builtin.template:
+    src: hybridops-eveng-management.sh.j2
+    dest: /usr/local/sbin/hybridops-eveng-management
+    owner: root
+    group: root
+    mode: "0755"
+  notify: restart eveng management access
+
+- name: Install EVE-NG management bridge service
+  ansible.builtin.template:
+    src: hybridops-eveng-management.service.j2
+    dest: /etc/systemd/system/hybridops-eveng-management.service
+    owner: root
+    group: root
+    mode: "0644"
+  notify: restart eveng management access
+
+- name: Configure DHCP for the EVE-NG management plane
+  ansible.builtin.template:
+    src: eveng-management-dnsmasq.conf.j2
+    dest: /etc/dnsmasq.d/hybridops-eveng-management.conf
+    owner: root
+    group: root
+    mode: "0644"
+  notify: restart dnsmasq
+
+- name: Create the OpenSSH configuration directory
+  ansible.builtin.file:
+    path: /etc/ssh/sshd_config.d
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Enable OpenSSH configuration fragments
+  ansible.builtin.lineinfile:
+    path: /etc/ssh/sshd_config
+    line: Include /etc/ssh/sshd_config.d/*.conf
+    regexp: '^Include\s+/etc/ssh/sshd_config\.d/\*\.conf$'
+    insertbefore: BOF
+  notify: restart sshd
+
+- name: Permit the EVE-NG operator tunnel
+  ansible.builtin.template:
+    src: hybridops-management-sshd.conf.j2
+    dest: /etc/ssh/sshd_config.d/60-hybridops-management.conf
+    owner: root
+    group: root
+    mode: "0644"
+  notify: restart sshd
+
+- name: Install the private route helper
+  ansible.builtin.template:
+    src: hybridops-lab-route.sh.j2
+    dest: /usr/local/sbin/hybridops-lab-route
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Authorise the operator route helper
+  ansible.builtin.template:
+    src: hybridops-lab-route.sudoers.j2
+    dest: /etc/sudoers.d/hybridops-lab-route
+    owner: root
+    group: root
+    mode: "0440"
+    validate: /usr/sbin/visudo -cf %s
+
+- name: Validate the OpenSSH management configuration
+  ansible.builtin.command: /usr/sbin/sshd -t
+  changed_when: false
+
+- name: Enable EVE-NG management bridge
+  ansible.builtin.systemd:
+    name: hybridops-eveng-management.service
+    enabled: true
+    state: started
+    daemon_reload: true
+
+- name: Apply EVE-NG management changes
+  ansible.builtin.meta: flush_handlers
+
+- name: Read EVE-NG management bridge state
+  ansible.builtin.command: "ip -4 -brief address show dev {{ eveng_management_bridge }}"
+  register: eveng_management_bridge_state
+  changed_when: false
+
+- name: Verify EVE-NG management access
+  ansible.builtin.assert:
+    that:
+      - eveng_management_cidr.split('/')[0] in eveng_management_bridge_state.stdout
+    fail_msg: EVE-NG management bridge is not ready.

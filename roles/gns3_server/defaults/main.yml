@@ -8,11 +8,21 @@ gns3_server_group: "gns3"
 gns3_server_home: "/var/lib/gns3"
 gns3_server_config_dir: "/etc/gns3"
 gns3_server_data_dir: "/var/lib/gns3"
+gns3_server_iourc_path: "{{ gns3_server_home }}/.iourc"
 gns3_server_allowed_interfaces:
   - virbr0
 gns3_server_enable_kvm: true
 gns3_server_require_kvm: false
 gns3_server_install_emulators: true
+gns3_server_management_access_enabled: false
+gns3_server_management_bridge: "hyops-mgmt0"
+gns3_server_management_cidr: "172.29.130.1/24"
+gns3_server_management_subnet: "172.29.130.0/24"
+gns3_server_management_dhcp_start: "172.29.130.50"
+gns3_server_management_dhcp_end: "172.29.130.200"
+gns3_server_management_dhcp_lease: "12h"
+gns3_server_management_lease_file: "/var/lib/misc/dnsmasq.hybridops-gns3-management.leases"
+gns3_server_management_access_ssh_user: "opsadmin"
 gns3_server_api_wait_timeout: 60
 gns3_server_package_versions:
   jammy: "2.2.55~jammy2"

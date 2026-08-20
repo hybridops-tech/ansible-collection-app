@@ -26,6 +26,14 @@
     - network
     - guest-nat
 
+- name: Configure private management access
+  ansible.builtin.include_tasks: management-access.yml
+  when: eveng_management_access_enabled | bool
+  tags:
+    - eveng
+    - network
+    - management-access
+
 - name: Manage additional users
   ansible.builtin.include_tasks: users.yml
   when:

@@ -4,6 +4,11 @@ gns3_images_username: "gns3"
 gns3_images_password: ""
 gns3_images_compute_id: "local"
 gns3_images_qemu_dir: "/var/lib/gns3/images/QEMU"
+gns3_images_iou_dir: "/var/lib/gns3/images/IOU"
+gns3_images_iourc_path: "/var/lib/gns3/.iourc"
+gns3_images_iourc_content: ""
+gns3_images_iou_package: "gns3-iou"
+gns3_images_install_iou_runtime: true
 gns3_images_owner: "gns3"
 gns3_images_group: "gns3"
 gns3_images_items: []
@@ -20,3 +25,13 @@ gns3_images_template_defaults:
   console_type: "telnet"
   hda_disk_interface: "virtio"
   linked_clone: true
+
+gns3_images_iou_template_defaults:
+  category: "router"
+  symbol: ":/symbols/multilayer_switch.svg"
+  ram: 1024
+  nvram: 256
+  ethernet_adapters: 2
+  serial_adapters: 0
+  console_type: "telnet"
+  use_default_iou_values: false

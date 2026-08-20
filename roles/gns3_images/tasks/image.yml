@@ -1,7 +1,14 @@
 ---
 - name: Resolve GNS3 image declaration
   ansible.builtin.set_fact:
-    gns3_image_path: "{{ gns3_images_qemu_dir }}/{{ gns3_image.filename }}"
+    gns3_image_type: "{{ gns3_image.type | default('qemu') }}"
+    gns3_image_path: >-
+      {{
+        (gns3_images_iou_dir
+         if gns3_image.type | default('qemu') == 'iou'
+         else gns3_images_qemu_dir)
+        ~ '/' ~ gns3_image.filename
+      }}
     gns3_image_disk_type: "{{ gns3_image.disk_type | default('hda') }}"
     gns3_image_template_image_field: >-
       {{ 'hda_disk_image'
@@ -9,6 +16,9 @@
          else 'cdrom_image' }}
     gns3_image_template: >-
       {{ gns3_images_template_defaults
+         | combine(gns3_image.template | default({}), recursive=true) }}
+    gns3_image_iou_template: >-
+      {{ gns3_images_iou_template_defaults
          | combine(gns3_image.template | default({}), recursive=true) }}
     gns3_image_existing_template: >-
       {{ gns3_images_existing_templates.json
@@ -26,6 +36,7 @@
   ansible.builtin.stat:
     path: "{{ gns3_image_template.qemu_path }}"
   register: gns3_image_qemu_binary
+  when: gns3_image_type == 'qemu'
 
 - name: Validate declared QEMU executable
   ansible.builtin.assert:
@@ -36,8 +47,9 @@
     fail_msg: >-
       GNS3 image {{ gns3_image.name }} requires an executable QEMU binary at
       {{ gns3_image_template.qemu_path }}.
+  when: gns3_image_type == 'qemu'
 
-- name: Validate an existing GNS3 image template
+- name: Validate an existing GNS3 QEMU image template
   ansible.builtin.assert:
     that:
       - gns3_image_existing_template[0].template_type == 'qemu'
@@ -47,7 +59,21 @@
     fail_msg: >-
       Existing GNS3 template {{ gns3_image.name }} is incompatible with the
       declared image. Rename the declaration or resolve the template conflict.
-  when: gns3_image_existing_template | length == 1
+  when:
+    - gns3_image_existing_template | length == 1
+    - gns3_image_type == 'qemu'
+
+- name: Validate an existing GNS3 IOU image template
+  ansible.builtin.assert:
+    that:
+      - gns3_image_existing_template[0].template_type == 'iou'
+      - gns3_image_existing_template[0].path == gns3_image_path
+    fail_msg: >-
+      Existing GNS3 template {{ gns3_image.name }} is incompatible with the
+      declared IOU image. Rename the declaration or resolve the template conflict.
+  when:
+    - gns3_image_existing_template | length == 1
+    - gns3_image_type == 'iou'
 
 - name: Download and verify GNS3 image
   ansible.builtin.get_url:
@@ -56,7 +82,7 @@
     checksum: "{{ gns3_image.checksum }}"
     owner: "{{ gns3_images_owner }}"
     group: "{{ gns3_images_group }}"
-    mode: "0640"
+    mode: "{{ '0750' if gns3_image_type == 'iou' else '0640' }}"
     timeout: "{{ gns3_image.timeout | default(600) }}"
   no_log: true
 
@@ -90,8 +116,38 @@
         else {'cdrom_image': gns3_image.filename, 'boot_priority': 'd'}
       ) }}
     status_code: 201
-  register: gns3_image_created_template
-  when: gns3_image_existing_template | length == 0
+  register: gns3_image_created_qemu_template
+  when:
+    - gns3_image_existing_template | length == 0
+    - gns3_image_type == 'qemu'
+  no_log: true
+
+- name: Register GNS3 IOU template
+  ansible.builtin.uri:
+    url: "http://127.0.0.1:{{ gns3_images_port }}/v2/templates"
+    method: POST
+    url_username: "{{ gns3_images_username }}"
+    url_password: "{{ gns3_images_password }}"
+    force_basic_auth: true
+    body_format: json
+    body:
+      name: "{{ gns3_image.name }}"
+      template_type: iou
+      compute_id: "{{ gns3_images_compute_id }}"
+      path: "{{ gns3_image_path }}"
+      category: "{{ gns3_image_iou_template.category }}"
+      symbol: "{{ gns3_image_iou_template.symbol }}"
+      ram: "{{ gns3_image_iou_template.ram | int }}"
+      nvram: "{{ gns3_image_iou_template.nvram | int }}"
+      ethernet_adapters: "{{ gns3_image_iou_template.ethernet_adapters | int }}"
+      serial_adapters: "{{ gns3_image_iou_template.serial_adapters | int }}"
+      console_type: "{{ gns3_image_iou_template.console_type }}"
+      use_default_iou_values: "{{ gns3_image_iou_template.use_default_iou_values | bool }}"
+    status_code: 201
+  register: gns3_image_created_iou_template
+  when:
+    - gns3_image_existing_template | length == 0
+    - gns3_image_type == 'iou'
   no_log: true
 
 - name: Record GNS3 image result
@@ -103,10 +159,15 @@
           'template_id': (
             gns3_image_existing_template[0].template_id
             if gns3_image_existing_template | length == 1
-            else gns3_image_created_template.json.template_id
+            else (
+              gns3_image_created_iou_template.json.template_id
+              if gns3_image_type == 'iou'
+              else gns3_image_created_qemu_template.json.template_id
+            )
           ),
           'filename': gns3_image.filename,
-          'disk_type': gns3_image_disk_type,
+          'type': gns3_image_type,
+          'disk_type': (gns3_image_disk_type if gns3_image_type == 'qemu' else ''),
           'created': gns3_image_existing_template | length == 0
         }]
       }, recursive=true) }}

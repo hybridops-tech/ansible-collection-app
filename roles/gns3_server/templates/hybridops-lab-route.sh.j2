@@ -1,0 +1,70 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+readonly management_bridge={{ gns3_server_management_bridge | quote }}
+readonly management_subnet={{ gns3_server_management_subnet | quote }}
+
+if [[ $# -ne 4 || "$1" != "session" ]]; then
+  echo "usage: hybridops-lab-route session <tunN> <remote-cidr> <local-peer>" >&2
+  exit 64
+fi
+
+readonly tunnel_interface="$2"
+readonly remote_cidr="$3"
+readonly local_peer="$4"
+
+if [[ ! "$tunnel_interface" =~ ^tun[0-9]{2,4}$ ]]; then
+  echo "invalid tunnel interface" >&2
+  exit 64
+fi
+
+python3 - "$remote_cidr" "$local_peer" <<'PY'
+import ipaddress
+import sys
+
+remote = ipaddress.ip_interface(sys.argv[1])
+peer = ipaddress.ip_address(sys.argv[2])
+link_local = ipaddress.ip_network("169.254.0.0/16")
+if remote.version != 4 or remote.network.prefixlen != 30:
+    raise SystemExit("invalid tunnel network")
+if remote.ip not in link_local or peer not in remote.network or peer == remote.ip:
+    raise SystemExit("invalid tunnel endpoints")
+PY
+
+if [[ ! -e "/sys/class/net/${management_bridge}" ]]; then
+  echo "management bridge is unavailable" >&2
+  exit 69
+fi
+if [[ ! -e "/sys/class/net/${tunnel_interface}" ]]; then
+  echo "OpenSSH tunnel interface is unavailable" >&2
+  exit 69
+fi
+
+cleanup() {
+  iptables -D FORWARD -i "$tunnel_interface" -o "$management_bridge" \
+    -d "$management_subnet" -j ACCEPT 2>/dev/null || true
+  iptables -D FORWARD -i "$management_bridge" -o "$tunnel_interface" \
+    -s "$management_subnet" -m conntrack --ctstate RELATED,ESTABLISHED \
+    -j ACCEPT 2>/dev/null || true
+}
+
+finish() {
+  cleanup
+  exit 0
+}
+
+trap cleanup EXIT
+trap finish HUP INT TERM
+ip address replace "$remote_cidr" peer "$local_peer" dev "$tunnel_interface"
+ip link set "$tunnel_interface" up
+sysctl -q -w net.ipv4.ip_forward=1
+sysctl -q -w net.ipv4.conf.all.rp_filter=0
+cleanup
+iptables -I FORWARD 1 -i "$tunnel_interface" -o "$management_bridge" \
+  -d "$management_subnet" -j ACCEPT
+iptables -I FORWARD 1 -i "$management_bridge" -o "$tunnel_interface" \
+  -s "$management_subnet" -m conntrack --ctstate RELATED,ESTABLISHED -j ACCEPT
+
+while sleep 3600; do
+  :
+done

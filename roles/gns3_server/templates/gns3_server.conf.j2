@@ -1,4 +1,5 @@
 [Server]
+{% set _management_interfaces = [gns3_server_management_bridge] if gns3_server_management_access_enabled else [] %}
 host = {{ gns3_server_bind_address }}
 port = {{ gns3_server_port }}
 auth = True
@@ -8,9 +9,13 @@ images_path = {{ gns3_server_data_dir }}/images
 projects_path = {{ gns3_server_data_dir }}/projects
 appliances_path = {{ gns3_server_data_dir }}/appliances
 symbols_path = {{ gns3_server_data_dir }}/symbols
-allowed_interfaces = {{ gns3_server_allowed_interfaces | join(',') }}
+allowed_interfaces = {{ (gns3_server_allowed_interfaces + _management_interfaces) | unique | join(',') }}
 report_errors = False
 
 [Qemu]
 enable_kvm = {{ gns3_server_enable_kvm | bool }}
 require_kvm = {{ gns3_server_require_kvm | bool }}
+
+[IOU]
+iourc_path = {{ gns3_server_iourc_path }}
+license_check = True

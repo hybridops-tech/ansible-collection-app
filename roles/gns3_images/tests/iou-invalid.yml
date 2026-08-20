@@ -1,0 +1,38 @@
+---
+- name: Test rejection of malformed GNS3 IOU licence material
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  vars:
+    gns3_images_password: test-only-password
+    gns3_images_iourc_content: not-an-iourc
+    gns3_images_items:
+      - name: Test IOU router
+        type: iou
+        url: https://example.invalid/router.bin
+        filename: router.bin
+        checksum: sha256:29d6faff44b0ddebacf9eb661c41f1d025562cdd8a2560490d77cefeba2d8af2
+
+  tasks:
+    - name: Initialise expected rejection
+      ansible.builtin.set_fact:
+        gns3_images_invalid_iourc_rejected: false
+
+    - name: Require malformed IOU licence rejection
+      block:
+        - name: Run GNS3 image role
+          ansible.builtin.include_role:
+            name: hybridops.app.gns3_images
+
+        - name: Reject unexpected licence acceptance
+          ansible.builtin.fail:
+            msg: "Malformed IOU licence material was accepted."
+      rescue:
+        - name: Record expected licence rejection
+          ansible.builtin.set_fact:
+            gns3_images_invalid_iourc_rejected: true
+
+    - name: Require expected licence rejection
+      ansible.builtin.assert:
+        that:
+          - gns3_images_invalid_iourc_rejected | bool

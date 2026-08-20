@@ -8,3 +8,22 @@
     name: gns3server
     state: restarted
     daemon_reload: true
+
+- name: Restart GNS3 management bridge
+  listen: Restart GNS3 management access
+  ansible.builtin.systemd:
+    name: hybridops-gns3-management.service
+    state: restarted
+    daemon_reload: true
+
+- name: Restart dnsmasq for GNS3 management
+  listen: Restart GNS3 management dnsmasq
+  ansible.builtin.systemd:
+    name: dnsmasq
+    state: restarted
+
+- name: Restart OpenSSH for GNS3 management
+  listen: Restart GNS3 management sshd
+  ansible.builtin.systemd:
+    name: ssh
+    state: restarted
