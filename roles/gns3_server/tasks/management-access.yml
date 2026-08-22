@@ -40,14 +40,60 @@
     mode: "0644"
   notify: Restart GNS3 management access
 
-- name: Configure DHCP for the GNS3 management plane
+- name: Create the HybridOps configuration directory
+  ansible.builtin.file:
+    path: /etc/hybridops
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Remove the legacy global dnsmasq fragment
+  ansible.builtin.file:
+    path: /etc/dnsmasq.d/hybridops-gns3-management.conf
+    state: absent
+  notify: Restart GNS3 management dnsmasq
+
+- name: Configure isolated DHCP for the GNS3 management plane
   ansible.builtin.template:
     src: gns3-management-dnsmasq.conf.j2
-    dest: /etc/dnsmasq.d/hybridops-gns3-management.conf
+    dest: /etc/hybridops/gns3-management-dnsmasq.conf
     owner: root
     group: root
     mode: "0644"
   notify: Restart GNS3 management dnsmasq
+
+- name: Install the GNS3 management dnsmasq service
+  ansible.builtin.template:
+    src: hybridops-gns3-dnsmasq.service.j2
+    dest: /etc/systemd/system/hybridops-gns3-dnsmasq.service
+    owner: root
+    group: root
+    mode: "0644"
+  notify: Restart GNS3 management dnsmasq
+
+- name: Prepare the GNS3 management lease file
+  ansible.builtin.copy:
+    content: ""
+    dest: "{{ gns3_server_management_lease_file }}"
+    owner: dnsmasq
+    group: nogroup
+    mode: "0640"
+    force: false
+
+- name: Validate the isolated GNS3 dnsmasq configuration
+  ansible.builtin.command:
+    argv:
+      - /usr/sbin/dnsmasq
+      - --test
+      - --conf-file=/etc/hybridops/gns3-management-dnsmasq.conf
+  changed_when: false
+
+- name: Disable the global dnsmasq service
+  ansible.builtin.systemd:
+    name: dnsmasq.service
+    enabled: false
+    state: stopped
 
 - name: Create the OpenSSH configuration directory
   ansible.builtin.file:
@@ -102,6 +148,13 @@
     state: started
     daemon_reload: true
 
+- name: Enable isolated GNS3 management DHCP
+  ansible.builtin.systemd:
+    name: hybridops-gns3-dnsmasq.service
+    enabled: true
+    state: started
+    daemon_reload: true
+
 - name: Apply GNS3 management changes
   ansible.builtin.meta: flush_handlers
 
@@ -111,8 +164,14 @@
   register: gns3_server_management_bridge_state
   changed_when: false
 
+- name: Read GNS3 management service state
+  ansible.builtin.service_facts:
+
 - name: Verify GNS3 management access
   ansible.builtin.assert:
     that:
       - gns3_server_management_cidr.split('/')[0] in gns3_server_management_bridge_state.stdout
-    fail_msg: GNS3 management bridge is not ready.
+      - >-
+        ansible_facts.services['hybridops-gns3-dnsmasq.service'].state
+        == 'running'
+    fail_msg: GNS3 management bridge or DHCP service is not ready.

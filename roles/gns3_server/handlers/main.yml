@@ -16,11 +16,12 @@
     state: restarted
     daemon_reload: true
 
-- name: Restart dnsmasq for GNS3 management
+- name: Restart isolated dnsmasq for GNS3 management
   listen: Restart GNS3 management dnsmasq
   ansible.builtin.systemd:
-    name: dnsmasq
+    name: hybridops-gns3-dnsmasq.service
     state: restarted
+    daemon_reload: true
 
 - name: Restart OpenSSH for GNS3 management
   listen: Restart GNS3 management sshd
