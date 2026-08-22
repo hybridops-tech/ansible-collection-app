@@ -4,13 +4,27 @@
 from __future__ import annotations
 
 import argparse
+import io
 import json
+import tarfile
 import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import Any
 
 
 IMAGE_BYTES = b"HYBRIDOPS_IOU_TEST\n"
+
+
+def _image_archive() -> bytes:
+    buffer = io.BytesIO()
+    with tarfile.open(fileobj=buffer, mode="w:gz") as archive:
+        member = tarfile.TarInfo("iol/bin/router.bin")
+        member.size = len(IMAGE_BYTES)
+        archive.addfile(member, io.BytesIO(IMAGE_BYTES))
+    return buffer.getvalue()
+
+
+ARCHIVE_BYTES = _image_archive()
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -37,6 +51,13 @@ class Handler(BaseHTTPRequestHandler):
             self.send_header("Content-Length", str(len(IMAGE_BYTES)))
             self.end_headers()
             self.wfile.write(IMAGE_BYTES)
+            return
+        if self.path == "/iol-router.tar.gz":
+            self.send_response(200)
+            self.send_header("Content-Type", "application/gzip")
+            self.send_header("Content-Length", str(len(ARCHIVE_BYTES)))
+            self.end_headers()
+            self.wfile.write(ARCHIVE_BYTES)
             return
         self._json(404, {"error": "not found"})
 

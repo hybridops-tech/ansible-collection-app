@@ -1,0 +1,43 @@
+---
+- name: Test rejection of a GNS3 IOU licence bound to another host
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  vars:
+    gns3_images_password: test-only-password
+    gns3_images_install_iou_runtime: false
+    gns3_images_iourc_content: |
+      [license]
+      another-host = 0000000000000000;
+    gns3_images_items:
+      - name: Test IOU router
+        type: iou
+        url: https://example.invalid/router.bin
+        filename: router.bin
+        checksum: sha256:29d6faff44b0ddebacf9eb661c41f1d025562cdd8a2560490d77cefeba2d8af2
+
+  tasks:
+    - name: Read expected hostname
+      ansible.builtin.command: hostname
+      register: gns3_images_test_hostname
+      changed_when: false
+
+    - name: Require mismatched IOU licence rejection
+      block:
+        - name: Run GNS3 image role
+          ansible.builtin.include_role:
+            name: hybridops.app.gns3_images
+
+        - name: Reject unexpected licence acceptance
+          ansible.builtin.fail:
+            msg: "A GNS3 IOU licence bound to another host was accepted."
+      rescue:
+        - name: Record IOU licence rejection
+          ansible.builtin.set_fact:
+            gns3_images_iou_mismatch_error: "{{ ansible_failed_result.msg }}"
+
+    - name: Require actionable IOU licence diagnostics
+      ansible.builtin.assert:
+        that:
+          - gns3_images_test_hostname.stdout in gns3_images_iou_mismatch_error
+          - "'GNS3_IOU_LICENSE' in gns3_images_iou_mismatch_error"

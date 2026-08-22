@@ -5,6 +5,8 @@ gns3_images_password: ""
 gns3_images_compute_id: "local"
 gns3_images_qemu_dir: "/var/lib/gns3/images/QEMU"
 gns3_images_iou_dir: "/var/lib/gns3/images/IOU"
+gns3_images_cache_dir: "/var/cache/hybridops/gns3-images"
+gns3_images_keep_cache: false
 gns3_images_iourc_path: "/var/lib/gns3/.iourc"
 gns3_images_iourc_content: ""
 gns3_images_iou_package: "gns3-iou"
