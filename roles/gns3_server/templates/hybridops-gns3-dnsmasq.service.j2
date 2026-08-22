@@ -1,0 +1,15 @@
+[Unit]
+Description=HybridOps GNS3 management DHCP and DNS
+After=network-online.target hybridops-gns3-management.service
+Wants=network-online.target
+Requires=hybridops-gns3-management.service
+
+[Service]
+Type=simple
+ExecStartPre=/usr/sbin/dnsmasq --test --conf-file=/etc/hybridops/gns3-management-dnsmasq.conf
+ExecStart=/usr/sbin/dnsmasq --keep-in-foreground --conf-file=/etc/hybridops/gns3-management-dnsmasq.conf --user=dnsmasq --group=nogroup
+Restart=on-failure
+RestartSec=2
+
+[Install]
+WantedBy=multi-user.target

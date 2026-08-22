@@ -26,6 +26,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Preserved Core-selected Containerlab export, import, and destroy actions when
   deploy-time inputs remain present during rebuild and teardown.
+- Isolated GNS3 management DHCP from libvirt's dnsmasq configuration so a new
+  server can start both services without conflicting bind modes.
 
 ## [0.1.8] - 2026-07-19
 
