@@ -14,6 +14,7 @@
     gns3_images_password: test-only-password
     gns3_images_qemu_dir: "{{ test_root }}/images/QEMU"
     gns3_images_iou_dir: "{{ test_root }}/images/IOU"
+    gns3_images_cache_dir: "{{ test_root }}/cache"
     gns3_images_iourc_path: "{{ test_root }}/.iourc"
     gns3_images_owner: "{{ test_user }}"
     gns3_images_group: "{{ test_group }}"

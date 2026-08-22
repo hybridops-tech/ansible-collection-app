@@ -1,0 +1,97 @@
+---
+- name: Test EVE-compatible GNS3 image declaration
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  vars:
+    test_root: /tmp/hybridops-gns3-archive-test
+    test_port: 38082
+    test_user: "{{ lookup('env', 'USER') }}"
+    test_group: "{{ lookup('pipe', 'id -gn') }}"
+    test_hostname: "{{ lookup('pipe', 'hostname') }}"
+    gns3_images_port: "{{ test_port }}"
+    gns3_images_username: gns3
+    gns3_images_password: test-only-password
+    gns3_images_qemu_dir: "{{ test_root }}/images/QEMU"
+    gns3_images_iou_dir: "{{ test_root }}/images/IOU"
+    gns3_images_cache_dir: "{{ test_root }}/cache"
+    gns3_images_iourc_path: "{{ test_root }}/.iourc"
+    gns3_images_owner: "{{ test_user }}"
+    gns3_images_group: "{{ test_group }}"
+    gns3_images_install_iou_runtime: false
+    gns3_images_iourc_content: |
+      [license]
+      {{ test_hostname }} = 0000000000000000;
+    gns3_images_items:
+      - url: "http://127.0.0.1:{{ test_port }}/iol-router.tar.gz"
+        name: iol-router.tar.gz
+        type: iol
+        label: Test archived IOU router
+
+  tasks:
+    - name: Clear previous test data
+      ansible.builtin.file:
+        path: "{{ test_root }}"
+        state: absent
+
+    - name: Start mock GNS3 API
+      ansible.builtin.command:
+        argv:
+          - python3
+          - "{{ playbook_dir }}/mock_gns3_api.py"
+          - --port
+          - "{{ test_port | string }}"
+      async: 120
+      poll: 0
+      changed_when: true
+      register: gns3_images_mock_api_job
+
+    - name: Wait for mock GNS3 API
+      ansible.builtin.wait_for:
+        host: 127.0.0.1
+        port: "{{ test_port }}"
+        timeout: 10
+
+    - name: Exercise archived IOU image lifecycle
+      block:
+        - name: Install archived IOU fixture
+          ansible.builtin.include_role:
+            name: hybridops.app.gns3_images
+
+        - name: Inspect mapped IOU image
+          ansible.builtin.stat:
+            path: "{{ gns3_images_iou_dir }}/iol-router.bin"
+          register: gns3_images_test_image
+
+        - name: Read registered IOU template
+          ansible.builtin.uri:
+            url: "http://127.0.0.1:{{ test_port }}/v2/templates"
+            return_content: true
+          register: gns3_images_test_templates
+
+        - name: Require mapped image and template
+          ansible.builtin.assert:
+            that:
+              - gns3_images_test_image.stat.isreg
+              - gns3_images_test_image.stat.executable
+              - gns3_images_test_templates.json | length == 1
+              - gns3_images_test_templates.json[0].name == 'Test archived IOU router'
+              - gns3_images_test_templates.json[0].path == gns3_images_iou_dir ~ '/iol-router.bin'
+              - gns3_images_results.installed_count == 1
+      always:
+        - name: Stop mock GNS3 API
+          ansible.builtin.uri:
+            url: "http://127.0.0.1:{{ test_port }}/shutdown"
+            method: POST
+            status_code: 200
+          failed_when: false
+
+        - name: Clear mock API job record
+          ansible.builtin.async_status:
+            jid: "{{ gns3_images_mock_api_job.ansible_job_id }}"
+            mode: cleanup
+
+        - name: Remove test data
+          ansible.builtin.file:
+            path: "{{ test_root }}"
+            state: absent

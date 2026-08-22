@@ -1,13 +1,15 @@
 ---
+- name: Acquire GNS3 image
+  ansible.builtin.include_tasks: acquire.yml
+
 - name: Resolve GNS3 image declaration
   ansible.builtin.set_fact:
-    gns3_image_type: "{{ gns3_image.type | default('qemu') }}"
     gns3_image_path: >-
       {{
         (gns3_images_iou_dir
-         if gns3_image.type | default('qemu') == 'iou'
+         if gns3_image_type == 'iou'
          else gns3_images_qemu_dir)
-        ~ '/' ~ gns3_image.filename
+        ~ '/' ~ gns3_image_filename
       }}
     gns3_image_disk_type: "{{ gns3_image.disk_type | default('hda') }}"
     gns3_image_template_image_field: >-
@@ -22,7 +24,7 @@
          | combine(gns3_image.template | default({}), recursive=true) }}
     gns3_image_existing_template: >-
       {{ gns3_images_existing_templates.json
-         | selectattr('name', 'equalto', gns3_image.name)
+         | selectattr('name', 'equalto', gns3_image_template_name)
          | list }}
   no_log: true
 
@@ -30,7 +32,7 @@
   ansible.builtin.assert:
     that:
       - gns3_image_existing_template | length <= 1
-    fail_msg: "More than one GNS3 template is named {{ gns3_image.name }}."
+    fail_msg: "More than one GNS3 template is named {{ gns3_image_template_name }}."
 
 - name: Check declared QEMU executable
   ansible.builtin.stat:
@@ -45,7 +47,7 @@
       - gns3_image_qemu_binary.stat.isreg
       - gns3_image_qemu_binary.stat.executable
     fail_msg: >-
-      GNS3 image {{ gns3_image.name }} requires an executable QEMU binary at
+      GNS3 image {{ gns3_image_template_name }} requires an executable QEMU binary at
       {{ gns3_image_template.qemu_path }}.
   when: gns3_image_type == 'qemu'
 
@@ -53,11 +55,11 @@
   ansible.builtin.assert:
     that:
       - gns3_image_existing_template[0].template_type == 'qemu'
-      - gns3_image_existing_template[0][gns3_image_template_image_field] == gns3_image.filename
+      - gns3_image_existing_template[0][gns3_image_template_image_field] == gns3_image_filename
       - gns3_image_existing_template[0].platform == gns3_image_template.platform
       - gns3_image_existing_template[0].qemu_path == gns3_image_template.qemu_path
     fail_msg: >-
-      Existing GNS3 template {{ gns3_image.name }} is incompatible with the
+      Existing GNS3 template {{ gns3_image_template_name }} is incompatible with the
       declared image. Rename the declaration or resolve the template conflict.
   when:
     - gns3_image_existing_template | length == 1
@@ -69,21 +71,20 @@
       - gns3_image_existing_template[0].template_type == 'iou'
       - gns3_image_existing_template[0].path == gns3_image_path
     fail_msg: >-
-      Existing GNS3 template {{ gns3_image.name }} is incompatible with the
+      Existing GNS3 template {{ gns3_image_template_name }} is incompatible with the
       declared IOU image. Rename the declaration or resolve the template conflict.
   when:
     - gns3_image_existing_template | length == 1
     - gns3_image_type == 'iou'
 
-- name: Download and verify GNS3 image
-  ansible.builtin.get_url:
-    url: "{{ gns3_image.url }}"
+- name: Install acquired GNS3 image
+  ansible.builtin.copy:
+    src: "{{ gns3_image_payload_path }}"
     dest: "{{ gns3_image_path }}"
-    checksum: "{{ gns3_image.checksum }}"
+    remote_src: true
     owner: "{{ gns3_images_owner }}"
     group: "{{ gns3_images_group }}"
     mode: "{{ '0750' if gns3_image_type == 'iou' else '0640' }}"
-    timeout: "{{ gns3_image.timeout | default(600) }}"
   no_log: true
 
 - name: Register GNS3 QEMU template
@@ -96,7 +97,7 @@
     body_format: json
     body: >-
       {{ {
-        'name': gns3_image.name,
+        'name': gns3_image_template_name,
         'template_type': 'qemu',
         'compute_id': gns3_images_compute_id,
         'category': gns3_image_template.category,
@@ -110,10 +111,10 @@
         'console_type': gns3_image_template.console_type,
         'linked_clone': gns3_image_template.linked_clone | bool
       } | combine(
-        {'hda_disk_image': gns3_image.filename,
+        {'hda_disk_image': gns3_image_filename,
          'hda_disk_interface': gns3_image_template.hda_disk_interface}
         if gns3_image_disk_type == 'hda'
-        else {'cdrom_image': gns3_image.filename, 'boot_priority': 'd'}
+        else {'cdrom_image': gns3_image_filename, 'boot_priority': 'd'}
       ) }}
     status_code: 201
   register: gns3_image_created_qemu_template
@@ -131,7 +132,7 @@
     force_basic_auth: true
     body_format: json
     body:
-      name: "{{ gns3_image.name }}"
+      name: "{{ gns3_image_template_name }}"
       template_type: iou
       compute_id: "{{ gns3_images_compute_id }}"
       path: "{{ gns3_image_path }}"
@@ -155,7 +156,7 @@
     gns3_images_results: >-
       {{ gns3_images_results | combine({
         'images': gns3_images_results.images + [{
-          'template_name': gns3_image.name,
+          'template_name': gns3_image_template_name,
           'template_id': (
             gns3_image_existing_template[0].template_id
             if gns3_image_existing_template | length == 1
@@ -165,7 +166,7 @@
               else gns3_image_created_qemu_template.json.template_id
             )
           ),
-          'filename': gns3_image.filename,
+          'filename': gns3_image_filename,
           'type': gns3_image_type,
           'disk_type': (gns3_image_disk_type if gns3_image_type == 'qemu' else ''),
           'created': gns3_image_existing_template | length == 0

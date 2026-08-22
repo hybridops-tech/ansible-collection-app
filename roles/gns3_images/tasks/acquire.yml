@@ -1,0 +1,190 @@
+---
+- name: Resolve GNS3 image source
+  ansible.builtin.set_fact:
+    gns3_image_type: >-
+      {{ 'iou' if gns3_image.type | default('qemu') in ['iou', 'iol'] else 'qemu' }}
+    gns3_image_source_name: >-
+      {{ gns3_image.filename | default(gns3_image.name | default('image-download')) }}
+    gns3_image_template_name: >-
+      {{
+        gns3_image.label
+        | default(
+            gns3_image.name
+            | default('GNS3 image')
+            | regex_replace('(?i)\.(tar\.gz|tgz|zip|gz)$', '')
+          )
+      }}
+    gns3_image_work_dir: >-
+      {{ gns3_images_cache_dir }}/{{ (gns3_image.url | hash('sha256'))[:16] }}
+
+- name: Validate resolved GNS3 image source
+  ansible.builtin.assert:
+    that:
+      - gns3_image_source_name | basename == gns3_image_source_name
+      - gns3_image_template_name | string | trim | length > 0
+    fail_msg: "GNS3 image source names must be safe filenames and template names must not be empty."
+
+- name: Reset GNS3 image work directory
+  ansible.builtin.file:
+    path: "{{ gns3_image_work_dir }}"
+    state: absent
+
+- name: Create GNS3 image work directory
+  ansible.builtin.file:
+    path: "{{ gns3_image_work_dir }}"
+    state: directory
+    owner: "{{ gns3_images_owner }}"
+    group: "{{ gns3_images_group }}"
+    mode: "0750"
+
+- name: Download GNS3 image from HTTP
+  ansible.builtin.get_url:
+    url: "{{ gns3_image.url }}"
+    dest: "{{ gns3_image_work_dir }}/{{ gns3_image_source_name }}"
+    checksum: "{{ gns3_image.checksum | default(omit) }}"
+    owner: "{{ gns3_images_owner }}"
+    group: "{{ gns3_images_group }}"
+    mode: "0600"
+    timeout: "{{ gns3_image.timeout | default(900) }}"
+  when: "'mega.nz' not in gns3_image.url"
+  no_log: true
+
+- name: Download GNS3 image from MEGA
+  ansible.builtin.command:
+    argv:
+      - timeout
+      - "{{ gns3_image.timeout | default(900) | string }}"
+      - mega-get
+      - "{{ gns3_image.url }}"
+      - "{{ gns3_image_work_dir }}"
+  when: "'mega.nz' in gns3_image.url"
+  changed_when: true
+  no_log: true
+
+- name: Discover downloaded GNS3 image source
+  ansible.builtin.find:
+    paths: "{{ gns3_image_work_dir }}"
+    recurse: true
+    file_type: file
+    hidden: true
+  register: gns3_image_downloaded_files
+
+- name: Require one downloaded GNS3 image source
+  ansible.builtin.assert:
+    that:
+      - gns3_image_downloaded_files.matched == 1
+    fail_msg: >-
+      GNS3 image download must produce exactly one source file; found
+      {{ gns3_image_downloaded_files.matched }} for {{ gns3_image_template_name }}.
+
+- name: Record downloaded GNS3 image source
+  ansible.builtin.set_fact:
+    gns3_image_source_path: "{{ gns3_image_downloaded_files.files[0].path }}"
+    gns3_image_is_archive: >-
+      {{
+        gns3_image_downloaded_files.files[0].path
+        is match('(?i)^.*\.(tar\.gz|tgz|zip|gz)$')
+        or gns3_image_source_name is match('(?i)^.*\.(tar\.gz|tgz|zip|gz)$')
+      }}
+
+- name: Verify optional GNS3 image checksum
+  when: gns3_image.checksum is defined
+  block:
+    - name: Calculate downloaded GNS3 image checksum
+      ansible.builtin.stat:
+        path: "{{ gns3_image_source_path }}"
+        checksum_algorithm: sha256
+      register: gns3_image_source_stat
+
+    - name: Require matching GNS3 image checksum
+      ansible.builtin.assert:
+        that:
+          - gns3_image_source_stat.stat.checksum == gns3_image.checksum | regex_replace('^sha256:', '')
+        fail_msg: "Downloaded GNS3 image checksum does not match its declaration."
+
+- name: Extract GNS3 image archive
+  when: gns3_image_is_archive | bool
+  block:
+    - name: Install GNS3 archive extractor
+      ansible.builtin.copy:
+        src: extract_image_archive.py
+        dest: "{{ gns3_image_work_dir }}/extract_image_archive.py"
+        owner: "{{ gns3_images_owner }}"
+        group: "{{ gns3_images_group }}"
+        mode: "0750"
+
+    - name: Create GNS3 image extraction directory
+      ansible.builtin.file:
+        path: "{{ gns3_image_work_dir }}/extracted"
+        state: directory
+        owner: "{{ gns3_images_owner }}"
+        group: "{{ gns3_images_group }}"
+        mode: "0750"
+
+    - name: Extract GNS3 image payload
+      ansible.builtin.command:
+        argv:
+          - python3
+          - "{{ gns3_image_work_dir }}/extract_image_archive.py"
+          - "{{ gns3_image_source_path }}"
+          - "{{ gns3_image_work_dir }}/extracted"
+      changed_when: true
+
+    - name: Discover GNS3 image archive payload
+      ansible.builtin.find:
+        paths: "{{ gns3_image_work_dir }}/extracted"
+        recurse: true
+        file_type: file
+        patterns: >-
+          {{ ['*.bin'] if gns3_image_type == 'iou' else ['*.qcow2', '*.img', '*.iso'] }}
+      register: gns3_image_archive_payloads
+
+    - name: Require one usable GNS3 image archive payload
+      ansible.builtin.assert:
+        that:
+          - gns3_image_archive_payloads.matched == 1
+        fail_msg: >-
+          GNS3 image archive must contain exactly one usable
+          {{ '.bin' if gns3_image_type == 'iou' else 'QEMU disk or ISO' }};
+          found {{ gns3_image_archive_payloads.matched }}.
+
+- name: Resolve GNS3 image payload
+  ansible.builtin.set_fact:
+    gns3_image_payload_path: >-
+      {{
+        gns3_image_archive_payloads.files[0].path
+        if gns3_image_is_archive | bool
+        else gns3_image_source_path
+      }}
+
+- name: Resolve installed GNS3 image filename
+  ansible.builtin.set_fact:
+    gns3_image_filename: >-
+      {{
+        gns3_image.target_filename
+        | default(
+            (
+              gns3_image_source_name
+              | regex_replace('(?i)\.(tar\.gz|tgz|zip|gz)$', '')
+            )
+            ~ (
+              gns3_image_payload_path
+              | basename
+              | regex_search('(?i)\.(bin|qcow2|img|iso)$')
+            )
+            if gns3_image_is_archive | bool
+            else gns3_image_source_path | basename
+          )
+      }}
+
+- name: Validate installed GNS3 image filename
+  ansible.builtin.assert:
+    that:
+      - gns3_image_filename | basename == gns3_image_filename
+      - >-
+        (gns3_image_type == 'iou' and
+         gns3_image_filename is match('(?i)^.+\.bin$'))
+        or
+        (gns3_image_type == 'qemu' and
+         gns3_image_filename is match('(?i)^.+\.(qcow2|img|iso)$'))
+    fail_msg: "Resolved GNS3 image payload has an unsupported filename."

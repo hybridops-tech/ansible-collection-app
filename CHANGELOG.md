@@ -7,15 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-## [0.1.9] - 2026-08-20
+## [0.1.9] - 2026-08-22
 
 ### Added
 
 - Added opt-in private management bridges with DHCP lease evidence for EVE-NG
   and GNS3 device automation access, including a subnet-scoped OpenSSH tunnel
   for direct Linux and WSL routing.
-- Added checksum-verified GNS3 IOU image placement, protected operator-supplied
-  licence handling, template registration, and support for older 32-bit images.
+- Added GNS3 QEMU and IOU image acquisition from HTTP, HTTPS and MEGA sources,
+  including safe archive extraction, automatic payload mapping, optional
+  checksums, and template registration.
+- Added protected operator-supplied IOU licence handling, hostname binding
+  validation, and support for older 32-bit images.
 - Added a pinned Containerlab runtime, native lab operations, independent
   health checks, and guarded off-host recovery for disposable hosts.
 
