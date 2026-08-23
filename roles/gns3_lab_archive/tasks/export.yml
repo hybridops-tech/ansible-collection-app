@@ -114,6 +114,29 @@
       delegate_to: localhost
       become: false
 
+    - name: Verify fetched GNS3 archive structure
+      ansible.builtin.command:
+        argv:
+          - tar
+          - -tzf
+          - "{{ _gns3_lab_archive_path }}"
+      delegate_to: localhost
+      become: false
+      changed_when: false
+      register: gns3_lab_archive_controller_members
+
+    - name: Require project state in fetched GNS3 archive
+      ansible.builtin.assert:
+        that:
+          - >-
+            gns3_lab_archive_controller_members.stdout_lines
+            | select('match', '^projects(/|$)')
+            | list
+            | length > 0
+        fail_msg: "Fetched GNS3 archive does not contain project state"
+      delegate_to: localhost
+      become: false
+
     - name: Calculate controller archive checksum
       ansible.builtin.stat:
         path: "{{ _gns3_lab_archive_path }}"
@@ -145,6 +168,7 @@
             'sha256': gns3_lab_archive_controller_stat.stat.checksum,
             'created_at': gns3_lab_archive_created_at.stdout,
             'members': gns3_lab_archive_members,
+            'member_count': gns3_lab_archive_controller_members.stdout_lines | length,
             'images_included': gns3_lab_archive_include_images | bool
           } | to_nice_json }}
       delegate_to: localhost
@@ -159,6 +183,7 @@
           created_at: "{{ gns3_lab_archive_created_at.stdout }}"
           manifest_path: "{{ _gns3_lab_archive_path }}.json"
           members: "{{ gns3_lab_archive_members }}"
+          member_count: "{{ gns3_lab_archive_controller_members.stdout_lines | length }}"
           images_included: "{{ gns3_lab_archive_include_images | bool }}"
   always:
     - name: Restart GNS3 service after export

@@ -23,7 +23,7 @@
             state: directory
             mode: "0750"
           loop:
-            - "{{ test_root }}/projects/demo/project-files"
+            - "{{ test_root }}/projects/demo/project-files/qemu/node-1"
             - "{{ test_root }}/.config/GNS3/2.2"
             - "{{ test_root }}/images/QEMU"
 
@@ -33,11 +33,19 @@
             mode: "0640"
             content: '{"name":"demo"}\n'
 
-        - name: Write test node disk
+        - name: Write test primary node disk
           ansible.builtin.copy:
-            dest: "{{ test_root }}/projects/demo/project-files/node.qcow2"
+            dest: >-
+              {{ test_root }}/projects/demo/project-files/qemu/node-1/hda_disk.qcow2
             mode: "0640"
-            content: "test node state\n"
+            content: "test primary node state\n"
+
+        - name: Write test secondary node disk
+          ansible.builtin.copy:
+            dest: >-
+              {{ test_root }}/projects/demo/project-files/qemu/node-1/hdb_disk.qcow2
+            mode: "0640"
+            content: "test secondary node state\n"
 
         - name: Write test controller state
           ansible.builtin.copy:
@@ -93,7 +101,12 @@
             | length == 1
           - >-
             gns3_lab_archive_test_members.stdout_lines
-            | select('match', '^projects/demo/project-files/node\.qcow2$')
+            | select('match', '^projects/demo/project-files/qemu/node-1/hda_disk\.qcow2$')
+            | list
+            | length == 1
+          - >-
+            gns3_lab_archive_test_members.stdout_lines
+            | select('match', '^projects/demo/project-files/qemu/node-1/hdb_disk\.qcow2$')
             | list
             | length == 1
           - >-
@@ -130,16 +143,24 @@
         path: "{{ test_root }}/projects/demo/demo.gns3"
       register: gns3_lab_archive_restored_project
 
-    - name: Verify restored node state
+    - name: Verify restored primary node state
       ansible.builtin.stat:
-        path: "{{ test_root }}/projects/demo/project-files/node.qcow2"
-      register: gns3_lab_archive_restored_node
+        path: >-
+          {{ test_root }}/projects/demo/project-files/qemu/node-1/hda_disk.qcow2
+      register: gns3_lab_archive_restored_primary_node
+
+    - name: Verify restored secondary node state
+      ansible.builtin.stat:
+        path: >-
+          {{ test_root }}/projects/demo/project-files/qemu/node-1/hdb_disk.qcow2
+      register: gns3_lab_archive_restored_secondary_node
 
     - name: Require restored project state
       ansible.builtin.assert:
         that:
           - gns3_lab_archive_restored_project.stat.isreg
-          - gns3_lab_archive_restored_node.stat.isreg
+          - gns3_lab_archive_restored_primary_node.stat.isreg
+          - gns3_lab_archive_restored_secondary_node.stat.isreg
 
   post_tasks:
     - name: Remove test data
