@@ -22,6 +22,11 @@
       register: gns3_images_test_hostname
       changed_when: false
 
+    - name: Read expected host identifier
+      ansible.builtin.command: hostid
+      register: gns3_images_test_hostid
+      changed_when: false
+
     - name: Require mismatched IOU licence rejection
       block:
         - name: Run GNS3 image role
@@ -40,4 +45,6 @@
       ansible.builtin.assert:
         that:
           - gns3_images_test_hostname.stdout in gns3_images_iou_mismatch_error
+          - gns3_images_test_hostid.stdout in gns3_images_iou_mismatch_error
+          - "'Host ID:' in gns3_images_iou_mismatch_error"
           - "'GNS3_IOU_LICENSE' in gns3_images_iou_mismatch_error"
