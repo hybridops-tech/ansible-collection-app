@@ -339,6 +339,54 @@
       delegate_to: localhost
       become: false
 
+    - name: Verify retained Containerlab archive structure
+      ansible.builtin.command:
+        argv:
+          - tar
+          - -tzf
+          - >-
+            {{ _containerlab_recovery_effective_controller_dir }}/{{
+               containerlab_recovery_bundle_name }}.tar.gz
+      register: containerlab_recovery_controller_members
+      delegate_to: localhost
+      become: false
+      changed_when: false
+
+    - name: Inspect retained Containerlab archive member types
+      ansible.builtin.command:
+        argv:
+          - tar
+          - -tvzf
+          - >-
+            {{ _containerlab_recovery_effective_controller_dir }}/{{
+               containerlab_recovery_bundle_name }}.tar.gz
+      register: containerlab_recovery_controller_member_types
+      delegate_to: localhost
+      become: false
+      changed_when: false
+
+    - name: Require safe retained Containerlab archive members
+      ansible.builtin.assert:
+        that:
+          - >-
+            containerlab_recovery_controller_members.stdout_lines
+            | reject('match', '(^/|(^|/)\.\.(/|$))')
+            | list
+            | length == containerlab_recovery_controller_members.stdout_lines | length
+          - >-
+            containerlab_recovery_controller_member_types.stdout_lines
+            | select('match', '^[lh]')
+            | list
+            | length == 0
+          - >-
+            containerlab_recovery_controller_members.stdout_lines
+            | select('equalto', containerlab_recovery_bundle_name ~ '/hybridops-recovery-manifest.json')
+            | list
+            | length == 1
+        fail_msg: "Retained Containerlab recovery archive is structurally unsafe or incomplete."
+      delegate_to: localhost
+      become: false
+
     - name: Verify off-host recovery archive integrity
       ansible.builtin.assert:
         that:
@@ -404,6 +452,44 @@
         fail_msg: "Imported Containerlab recovery archive checksum does not match."
       when: containerlab_recovery_expected_sha256 | length > 0
 
+    - name: List imported Containerlab archive members
+      ansible.builtin.command:
+        argv:
+          - tar
+          - -tzf
+          - "{{ containerlab_recovery_remote_root }}/import/recovery.tar.gz"
+      register: containerlab_recovery_import_members
+      changed_when: false
+
+    - name: Inspect imported Containerlab archive member types
+      ansible.builtin.command:
+        argv:
+          - tar
+          - -tvzf
+          - "{{ containerlab_recovery_remote_root }}/import/recovery.tar.gz"
+      register: containerlab_recovery_import_member_types
+      changed_when: false
+
+    - name: Reject unsafe imported Containerlab archive members
+      ansible.builtin.assert:
+        that:
+          - >-
+            containerlab_recovery_import_members.stdout_lines
+            | reject('match', '(^/|(^|/)\.\.(/|$))')
+            | list
+            | length == containerlab_recovery_import_members.stdout_lines | length
+          - >-
+            containerlab_recovery_import_member_types.stdout_lines
+            | select('match', '^[lh]')
+            | list
+            | length == 0
+          - >-
+            containerlab_recovery_import_members.stdout_lines
+            | select('match', '^[^/]+/hybridops-recovery-manifest\.json$')
+            | list
+            | length == 1
+        fail_msg: "Imported Containerlab recovery archive is structurally unsafe or incomplete."
+
     - name: Extract recovery archive
       ansible.builtin.unarchive:
         src: "{{ containerlab_recovery_remote_root }}/import/recovery.tar.gz"
@@ -436,6 +522,19 @@
           {{ containerlab_recovery_import_manifest_raw.content | b64decode | from_json }}
         containerlab_recovery_import_bundle_root: >-
           {{ containerlab_recovery_import_manifest.files[0].path | dirname }}
+
+    - name: Validate restored recovery manifest contract
+      ansible.builtin.assert:
+        that:
+          - containerlab_recovery_import_manifest_data.schema == 'hybridops.containerlab.recovery/v1'
+          - containerlab_recovery_import_manifest_data.mode in ['ephemeral', 'rebuild', 'snapshot']
+          - containerlab_recovery_import_manifest_data.topology_relpath | length > 0
+          - not (containerlab_recovery_import_manifest_data.topology_relpath | regex_search('^/'))
+          - "'..' not in containerlab_recovery_import_manifest_data.topology_relpath.split('/')"
+          - containerlab_recovery_import_manifest_data.topology_sha256 is match('^[0-9a-f]{64}$')
+          - containerlab_recovery_import_manifest_data.source_root_included is boolean
+          - containerlab_recovery_import_manifest_data.labdir_base | length > 0
+        fail_msg: "Restored Containerlab recovery manifest is invalid."
 
     - name: Resolve restored Containerlab source and topology paths
       ansible.builtin.set_fact:

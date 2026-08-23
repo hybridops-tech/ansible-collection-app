@@ -1,0 +1,108 @@
+---
+- name: Test Containerlab recovery export and import
+  hosts: localhost
+  become: false
+  gather_facts: false
+  vars:
+    test_root: /tmp/hybridops-containerlab-recovery-test
+    test_source: "{{ test_root }}/source"
+    test_labdirs: "{{ test_root }}/labdirs"
+    test_remote: "{{ test_root }}/remote"
+    test_controller: "{{ test_root }}/controller"
+    test_mock_bin: "{{ test_root }}/bin"
+  environment:
+    PATH: "{{ test_mock_bin }}:{{ lookup('env', 'PATH') }}"
+  tasks:
+    - name: Clear previous test data
+      ansible.builtin.file:
+        path: "{{ test_root }}"
+        state: absent
+
+    - name: Create test directories
+      ansible.builtin.file:
+        path: "{{ item }}"
+        state: directory
+        mode: "0750"
+      loop:
+        - "{{ test_source }}"
+        - "{{ test_labdirs }}"
+        - "{{ test_mock_bin }}"
+
+    - name: Write test topology
+      ansible.builtin.copy:
+        dest: "{{ test_source }}/lab.clab.yml"
+        mode: "0640"
+        content: |
+          name: recovery-test
+          topology:
+            nodes: {}
+
+    - name: Install test Containerlab command
+      ansible.builtin.copy:
+        dest: "{{ test_mock_bin }}/containerlab"
+        mode: "0750"
+        content: |
+          #!/bin/sh
+          if [ "$1" = "version" ]; then
+            printf '%s\n' '{"version":"0.78.0"}'
+          elif [ "$1" = "inspect" ]; then
+            printf '%s\n' '[]'
+          fi
+
+    - name: Export test recovery set
+      ansible.builtin.include_role:
+        name: hybridops.app.containerlab_recovery
+      vars:
+        _containerlab_recovery_action: export
+        _containerlab_recovery_topology_path: "{{ test_source }}/lab.clab.yml"
+        _containerlab_recovery_controller_dir: "{{ test_controller }}"
+        containerlab_recovery_mode: rebuild
+        containerlab_recovery_source_root: "{{ test_source }}"
+        containerlab_recovery_topology_relpath: lab.clab.yml
+        containerlab_recovery_remote_root: "{{ test_remote }}"
+        containerlab_recovery_labdir_base: "{{ test_labdirs }}"
+        containerlab_recovery_save_configs: false
+        containerlab_recovery_image_refs:
+          - ghcr.io/nokia/srlinux:latest
+
+    - name: Retain test recovery identity
+      ansible.builtin.set_fact:
+        test_archive: "{{ containerlab_recovery_result.controller_archive }}"
+        test_sha256: "{{ containerlab_recovery_result.sha256 }}"
+
+    - name: Require verified recovery export
+      ansible.builtin.assert:
+        that:
+          - containerlab_recovery_result.safe_for_host_destroy | bool
+          - test_sha256 is match('^[0-9a-f]{64}$')
+
+    - name: Import test recovery set
+      ansible.builtin.include_role:
+        name: hybridops.app.containerlab_recovery
+      vars:
+        _containerlab_recovery_action: import
+        containerlab_recovery_archive_path: "{{ test_archive }}"
+        containerlab_recovery_expected_sha256: "{{ test_sha256 }}"
+        containerlab_recovery_remote_root: "{{ test_remote }}"
+        containerlab_recovery_labdir_base: "{{ test_labdirs }}"
+        containerlab_recovery_overwrite: true
+
+    - name: Read restored topology
+      ansible.builtin.stat:
+        path: "{{ containerlab_recovery_result.topology_path }}"
+        checksum_algorithm: sha256
+      register: test_restored_topology
+
+    - name: Require verified recovery import
+      ansible.builtin.assert:
+        that:
+          - containerlab_recovery_result.action == 'import'
+          - containerlab_recovery_result.mode == 'rebuild'
+          - test_restored_topology.stat.isreg
+          - containerlab_recovery_result.image_refs == ['ghcr.io/nokia/srlinux:latest']
+
+  post_tasks:
+    - name: Remove test data
+      ansible.builtin.file:
+        path: "{{ test_root }}"
+        state: absent
