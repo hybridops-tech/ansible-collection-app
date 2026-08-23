@@ -11,6 +11,12 @@
          else gns3_images_qemu_dir)
         ~ '/' ~ gns3_image_filename
       }}
+    gns3_image_secondary_path: >-
+      {{
+        gns3_images_qemu_dir ~ '/' ~ gns3_image_secondary_filename
+        if gns3_image_secondary_filename | length > 0
+        else ''
+      }}
     gns3_image_disk_type: "{{ gns3_image.disk_type | default('hda') }}"
     gns3_image_template_image_field: >-
       {{ 'hda_disk_image'
@@ -58,6 +64,14 @@
       - gns3_image_existing_template[0][gns3_image_template_image_field] == gns3_image_filename
       - gns3_image_existing_template[0].platform == gns3_image_template.platform
       - gns3_image_existing_template[0].qemu_path == gns3_image_template.qemu_path
+      - >-
+        (
+          gns3_image_secondary_filename | length == 0
+          and gns3_image_existing_template[0].hdb_disk_image | default('') == ''
+        )
+        or
+        gns3_image_existing_template[0].hdb_disk_image | default('')
+        == gns3_image_secondary_filename
     fail_msg: >-
       Existing GNS3 template {{ gns3_image_template_name }} is incompatible with the
       declared image. Rename the declaration or resolve the template conflict.
@@ -85,6 +99,17 @@
     owner: "{{ gns3_images_owner }}"
     group: "{{ gns3_images_group }}"
     mode: "{{ '0750' if gns3_image_type == 'iou' else '0640' }}"
+  no_log: true
+
+- name: Install acquired GNS3 secondary disk
+  ansible.builtin.copy:
+    src: "{{ gns3_image_secondary_payload_path }}"
+    dest: "{{ gns3_image_secondary_path }}"
+    remote_src: true
+    owner: "{{ gns3_images_owner }}"
+    group: "{{ gns3_images_group }}"
+    mode: "0640"
+  when: gns3_image_secondary_payload_path | length > 0
   no_log: true
 
 - name: Register GNS3 QEMU template
@@ -115,6 +140,11 @@
          'hda_disk_interface': gns3_image_template.hda_disk_interface}
         if gns3_image_disk_type == 'hda'
         else {'cdrom_image': gns3_image_filename, 'boot_priority': 'd'}
+      ) | combine(
+        {'hdb_disk_image': gns3_image_secondary_filename,
+         'hdb_disk_interface': gns3_image_template.hdb_disk_interface}
+        if gns3_image_secondary_filename | length > 0
+        else {}
       ) }}
     status_code: 201
   register: gns3_image_created_qemu_template
@@ -167,6 +197,7 @@
             )
           ),
           'filename': gns3_image_filename,
+          'secondary_filename': gns3_image_secondary_filename,
           'type': gns3_image_type,
           'disk_type': (gns3_image_disk_type if gns3_image_type == 'qemu' else ''),
           'created': gns3_image_existing_template | length == 0

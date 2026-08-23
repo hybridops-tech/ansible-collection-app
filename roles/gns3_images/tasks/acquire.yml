@@ -139,22 +139,61 @@
           {{ ['*.bin'] if gns3_image_type == 'iou' else ['*.qcow2', '*.img', '*.iso'] }}
       register: gns3_image_archive_payloads
 
-    - name: Require one usable GNS3 image archive payload
+    - name: Classify GNS3 image archive payloads
+      ansible.builtin.set_fact:
+        gns3_image_archive_primary_payloads: >-
+          {{
+            gns3_image_archive_payloads.files
+            if gns3_image_type == 'iou'
+            else (
+              gns3_image_archive_payloads.files
+              | rejectattr('path', 'search', '(?i)datastor')
+              | list
+            )
+          }}
+        gns3_image_archive_secondary_payloads: >-
+          {{
+            []
+            if gns3_image_type == 'iou'
+            else (
+              gns3_image_archive_payloads.files
+              | selectattr('path', 'search', '(?i)datastor')
+              | list
+            )
+          }}
+
+    - name: Require an unambiguous GNS3 image archive payload
       ansible.builtin.assert:
         that:
-          - gns3_image_archive_payloads.matched == 1
+          - gns3_image_archive_primary_payloads | length == 1
+          - gns3_image_archive_secondary_payloads | length <= 1
+          - >-
+            (gns3_image_archive_primary_payloads | length)
+            + (gns3_image_archive_secondary_payloads | length)
+            == gns3_image_archive_payloads.matched
         fail_msg: >-
-          GNS3 image archive must contain exactly one usable
-          {{ '.bin' if gns3_image_type == 'iou' else 'QEMU disk or ISO' }};
-          found {{ gns3_image_archive_payloads.matched }}.
+          GNS3 image archive must contain exactly one primary
+          {{ '.bin image' if gns3_image_type == 'iou' else 'QEMU disk or ISO' }}
+          and at most one QEMU datastore disk; found
+          {{ gns3_image_archive_primary_payloads | length }} primary and
+          {{ gns3_image_archive_secondary_payloads | length }} datastore payloads.
 
 - name: Resolve GNS3 image payload
   ansible.builtin.set_fact:
     gns3_image_payload_path: >-
       {{
-        gns3_image_archive_payloads.files[0].path
+        gns3_image_archive_primary_payloads[0].path
         if gns3_image_is_archive | bool
         else gns3_image_source_path
+      }}
+    gns3_image_secondary_payload_path: >-
+      {{
+        gns3_image_archive_secondary_payloads[0].path
+        if (
+          gns3_image_is_archive | bool
+          and gns3_image_archive_secondary_payloads | length == 1
+        )
+        else ''
       }}
 
 - name: Resolve installed GNS3 image filename
@@ -163,7 +202,9 @@
       {{
         gns3_image.target_filename
         | default(
-            (
+            gns3_image_payload_path | basename
+            if gns3_image_source_name is match('(?i)^BIGIP-.+\.ALL\.qcow2\.zip$')
+            else (
               gns3_image_source_name
               | regex_replace('(?i)\.(tar\.gz|tgz|zip|gz)$', '')
             )
@@ -176,6 +217,12 @@
             else gns3_image_source_path | basename
           )
       }}
+    gns3_image_secondary_filename: >-
+      {{
+        gns3_image_secondary_payload_path | basename
+        if gns3_image_secondary_payload_path | length > 0
+        else ''
+      }}
 
 - name: Validate installed GNS3 image filename
   ansible.builtin.assert:
@@ -187,4 +234,10 @@
         or
         (gns3_image_type == 'qemu' and
          gns3_image_filename is match('(?i)^.+\.(qcow2|img|iso)$'))
+      - >-
+        gns3_image_secondary_filename | length == 0
+        or (
+          gns3_image_type == 'qemu'
+          and gns3_image_secondary_filename is match('(?i)^.+\.(qcow2|img)$')
+        )
     fail_msg: "Resolved GNS3 image payload has an unsupported filename."

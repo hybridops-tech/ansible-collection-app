@@ -17,9 +17,11 @@ gns3_images_items:
 ```
 
 HTTP, HTTPS and MEGA links are supported. Raw images and archives are accepted.
-An archive must contain exactly one usable payload: `.bin` for IOU or `.qcow2`,
-`.img` or `.iso` for QEMU. The role maps that payload to the GNS3 image directory
-and registers the template. `checksum` is optional; when supplied it must use
+An archive must contain exactly one primary payload: `.bin` for IOU or `.qcow2`,
+`.img` or `.iso` for QEMU. A QEMU archive may also contain one disk with
+`DATASTOR` in its filename; it is registered as the template's second disk.
+The role maps each payload to the GNS3 image directory and registers the
+template. `checksum` is optional; when supplied it must use
 `sha256:<64-hex-characters>` and applies to the downloaded source artifact.
 
 ```yaml

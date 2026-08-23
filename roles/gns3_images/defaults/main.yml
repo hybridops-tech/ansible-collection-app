@@ -26,6 +26,7 @@ gns3_images_template_defaults:
   adapter_type: "virtio-net-pci"
   console_type: "telnet"
   hda_disk_interface: "virtio"
+  hdb_disk_interface: "virtio"
   linked_clone: true
 
 gns3_images_iou_template_defaults:

@@ -8,6 +8,7 @@ import io
 import json
 import tarfile
 import threading
+import zipfile
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import Any
 
@@ -25,6 +26,17 @@ def _image_archive() -> bytes:
 
 
 ARCHIVE_BYTES = _image_archive()
+
+
+def _f5_archive() -> bytes:
+    buffer = io.BytesIO()
+    with zipfile.ZipFile(buffer, mode="w") as archive:
+        archive.writestr("BIGIP-11.6.0.0.0.401.qcow2", IMAGE_BYTES)
+        archive.writestr("BIGIP-11.6.0.0.0.401.DATASTOR.ALL.qcow2", IMAGE_BYTES)
+    return buffer.getvalue()
+
+
+F5_ARCHIVE_BYTES = _f5_archive()
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -58,6 +70,13 @@ class Handler(BaseHTTPRequestHandler):
             self.send_header("Content-Length", str(len(ARCHIVE_BYTES)))
             self.end_headers()
             self.wfile.write(ARCHIVE_BYTES)
+            return
+        if self.path == "/BIGIP-11.6.0.0.0.401.ALL.qcow2.zip":
+            self.send_response(200)
+            self.send_header("Content-Type", "application/zip")
+            self.send_header("Content-Length", str(len(F5_ARCHIVE_BYTES)))
+            self.end_headers()
+            self.wfile.write(F5_ARCHIVE_BYTES)
             return
         self._json(404, {"error": "not found"})
 

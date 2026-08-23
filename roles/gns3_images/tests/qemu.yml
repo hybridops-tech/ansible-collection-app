@@ -24,6 +24,10 @@
         filename: test.qcow2
         checksum: sha256:29d6faff44b0ddebacf9eb661c41f1d025562cdd8a2560490d77cefeba2d8af2
         disk_type: hda
+      - name: BIGIP-11.6.0.0.0.401.ALL.qcow2.zip
+        label: F5 BIG-IP 11.6
+        type: qemu
+        url: "http://127.0.0.1:{{ test_port }}/BIGIP-11.6.0.0.0.401.ALL.qcow2.zip"
 
   tasks:
     - name: Clear previous test data
@@ -55,10 +59,25 @@
           ansible.builtin.include_role:
             name: hybridops.app.gns3_images
 
+        - name: Reconcile QEMU fixture
+          ansible.builtin.include_role:
+            name: hybridops.app.gns3_images
+
         - name: Inspect QEMU image
           ansible.builtin.stat:
             path: "{{ gns3_images_qemu_dir }}/test.qcow2"
           register: gns3_images_test_qemu
+
+        - name: Inspect F5 BIG-IP system disk
+          ansible.builtin.stat:
+            path: "{{ gns3_images_qemu_dir }}/BIGIP-11.6.0.0.0.401.qcow2"
+          register: gns3_images_test_f5_system
+
+        - name: Inspect F5 BIG-IP datastore disk
+          ansible.builtin.stat:
+            path: >-
+              {{ gns3_images_qemu_dir }}/BIGIP-11.6.0.0.0.401.DATASTOR.ALL.qcow2
+          register: gns3_images_test_f5_datastore
 
         - name: Inspect absent IOU licence
           ansible.builtin.stat:
@@ -80,10 +99,18 @@
           ansible.builtin.assert:
             that:
               - gns3_images_test_qemu.stat.isreg
+              - gns3_images_test_f5_system.stat.isreg
+              - gns3_images_test_f5_datastore.stat.isreg
               - not gns3_images_test_iourc.stat.exists
               - not gns3_images_test_iou_dir.stat.exists
-              - gns3_images_test_templates.json | length == 1
+              - gns3_images_test_templates.json | length == 2
               - gns3_images_test_templates.json[0].template_type == 'qemu'
+              - >-
+                gns3_images_test_templates.json
+                | selectattr('name', 'equalto', 'F5 BIG-IP 11.6')
+                | map(attribute='hdb_disk_image')
+                | first
+                == 'BIGIP-11.6.0.0.0.401.DATASTOR.ALL.qcow2'
               - not gns3_images_results.iou_license_ready | bool
       always:
         - name: Stop mock GNS3 API
