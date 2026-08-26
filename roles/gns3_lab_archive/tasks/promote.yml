@@ -1,0 +1,111 @@
+---
+- name: Inspect current GNS3 archive generation
+  ansible.builtin.stat:
+    path: "{{ item }}"
+    checksum_algorithm: sha256
+  loop:
+    - "{{ _gns3_lab_archive_path }}"
+    - "{{ _gns3_lab_archive_path }}.json"
+  delegate_to: localhost
+  become: false
+  register: gns3_lab_archive_current_generation
+
+- name: Require a complete current GNS3 archive generation
+  ansible.builtin.assert:
+    that:
+      - >-
+        not gns3_lab_archive_current_generation.results[0].stat.exists
+        or gns3_lab_archive_current_generation.results[1].stat.isreg | default(false)
+    fail_msg: >-
+      Current GNS3 archive has no manifest. Move or repair it before export:
+      {{ _gns3_lab_archive_path }}
+  delegate_to: localhost
+  become: false
+
+- name: Read current GNS3 archive manifest
+  ansible.builtin.slurp:
+    path: "{{ _gns3_lab_archive_path }}.json"
+  delegate_to: localhost
+  become: false
+  register: gns3_lab_archive_current_manifest_raw
+  when: gns3_lab_archive_current_generation.results[0].stat.exists
+
+- name: Parse current GNS3 archive manifest
+  ansible.builtin.set_fact:
+    gns3_lab_archive_current_manifest: >-
+      {{ gns3_lab_archive_current_manifest_raw.content | b64decode | from_json }}
+  when: gns3_lab_archive_current_generation.results[0].stat.exists
+
+- name: Verify current GNS3 archive before rotation
+  ansible.builtin.assert:
+    that:
+      - >-
+        gns3_lab_archive_current_manifest.sha256 | lower
+        == gns3_lab_archive_current_generation.results[0].stat.checksum | lower
+    fail_msg: >-
+      Current GNS3 archive generation failed verification. It was not replaced.
+  delegate_to: localhost
+  become: false
+  when: gns3_lab_archive_current_generation.results[0].stat.exists
+
+- name: Remove older GNS3 fallback generation
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: absent
+  loop:
+    - "{{ _gns3_lab_archive_previous_path }}"
+    - "{{ _gns3_lab_archive_previous_path }}.json"
+  delegate_to: localhost
+  become: false
+
+- name: Retain current GNS3 archive as fallback
+  ansible.builtin.file:
+    src: "{{ item.src }}"
+    path: "{{ item.dest }}"
+    state: hard
+    mode: "0600"
+  loop:
+    - src: "{{ _gns3_lab_archive_path }}"
+      dest: "{{ _gns3_lab_archive_previous_path }}"
+    - src: "{{ _gns3_lab_archive_path }}.json"
+      dest: "{{ _gns3_lab_archive_previous_path }}.json"
+  loop_control:
+    label: "{{ item.src }}"
+  delegate_to: localhost
+  become: false
+  when: gns3_lab_archive_current_generation.results[0].stat.exists
+
+- name: Promote verified GNS3 lab archive
+  ansible.builtin.command:
+    argv:
+      - mv
+      - "{{ _gns3_lab_archive_candidate_path }}"
+      - "{{ _gns3_lab_archive_path }}"
+  delegate_to: localhost
+  become: false
+  changed_when: true
+
+- name: Promote verified GNS3 archive manifest
+  ansible.builtin.command:
+    argv:
+      - mv
+      - "{{ _gns3_lab_archive_candidate_path }}.json"
+      - "{{ _gns3_lab_archive_path }}.json"
+  delegate_to: localhost
+  become: false
+  changed_when: true
+
+- name: Publish GNS3 fallback archive path
+  ansible.builtin.set_fact:
+    gns3_lab_archive_previous_path: >-
+      {{
+        _gns3_lab_archive_previous_path
+        if gns3_lab_archive_current_generation.results[0].stat.exists
+        else ''
+      }}
+    gns3_lab_archive_previous_manifest_path: >-
+      {{
+        _gns3_lab_archive_previous_path ~ '.json'
+        if gns3_lab_archive_current_generation.results[0].stat.exists
+        else ''
+      }}

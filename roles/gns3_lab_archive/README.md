@@ -15,6 +15,9 @@ gns3_lab_archive_action: export
 gns3_lab_archive_path: /srv/hybridops/gns3/labs.tar.gz
 ```
 
+Each export is staged and verified before it replaces the current archive. The
+previous verified archive and manifest are retained with a `.previous` suffix.
+
 Restore requires the recorded SHA-256 checksum:
 
 ```yaml

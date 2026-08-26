@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- Staged and verified GNS3 project exports before promotion, retaining one
+  verified fallback archive and manifest.
+
 ## [0.1.9] - 2026-08-22
 
 ### Added
