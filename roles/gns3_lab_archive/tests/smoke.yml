@@ -82,6 +82,53 @@
       ansible.builtin.set_fact:
         gns3_lab_archive_test_checksum: "{{ gns3_lab_archive_results.sha256 }}"
 
+    - name: Change test project before the next export
+      ansible.builtin.copy:
+        dest: "{{ test_root }}/projects/demo/demo.gns3"
+        mode: "0640"
+        content: '{"name":"demo-updated"}\n'
+
+    - name: Repeat GNS3 state export
+      ansible.builtin.include_role:
+        name: hybridops.app.gns3_lab_archive
+      vars:
+        gns3_lab_archive_action: export
+        gns3_lab_archive_data_root: "{{ test_root }}"
+        gns3_lab_archive_path: "{{ test_archive }}"
+        gns3_lab_archive_remote_dir: "{{ test_root }}-staging"
+        gns3_lab_archive_owner: "{{ lookup('env', 'USER') }}"
+        gns3_lab_archive_group: "{{ lookup('pipe', 'id -gn') }}"
+        gns3_lab_archive_manage_service: false
+
+    - name: Inspect retained GNS3 fallback generation
+      ansible.builtin.stat:
+        path: "{{ item }}"
+        checksum_algorithm: sha256
+      loop:
+        - "{{ test_archive }}.previous"
+        - "{{ test_archive }}.previous.json"
+      register: gns3_lab_archive_previous_generation
+
+    - name: Retain current GNS3 archive checksum
+      ansible.builtin.set_fact:
+        gns3_lab_archive_current_checksum: "{{ gns3_lab_archive_results.sha256 }}"
+
+    - name: Require verified GNS3 fallback generation
+      ansible.builtin.assert:
+        that:
+          - gns3_lab_archive_previous_generation.results[0].stat.isreg
+          - gns3_lab_archive_previous_generation.results[1].stat.isreg
+          - gns3_lab_archive_current_checksum != gns3_lab_archive_test_checksum
+          - >-
+            gns3_lab_archive_previous_generation.results[0].stat.checksum
+            == gns3_lab_archive_test_checksum
+          - >-
+            gns3_lab_archive_results.previous_archive_path
+            == test_archive ~ '.previous'
+          - >-
+            gns3_lab_archive_results.previous_manifest_path
+            == test_archive ~ '.previous.json'
+
     - name: Inspect test archive
       ansible.builtin.command:
         argv:
@@ -132,7 +179,7 @@
         gns3_lab_archive_action: restore
         gns3_lab_archive_data_root: "{{ test_root }}"
         gns3_lab_archive_path: "{{ test_archive }}"
-        gns3_lab_archive_expected_sha256: "{{ gns3_lab_archive_test_checksum }}"
+        gns3_lab_archive_expected_sha256: "{{ gns3_lab_archive_current_checksum }}"
         gns3_lab_archive_overwrite: true
         gns3_lab_archive_owner: "{{ lookup('env', 'USER') }}"
         gns3_lab_archive_group: "{{ lookup('pipe', 'id -gn') }}"

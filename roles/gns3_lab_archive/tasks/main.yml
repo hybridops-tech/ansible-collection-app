@@ -11,6 +11,11 @@
         else gns3_lab_archive_path
       }}
 
+- name: Resolve GNS3 archive generation paths
+  ansible.builtin.set_fact:
+    _gns3_lab_archive_candidate_path: "{{ _gns3_lab_archive_path }}.candidate"
+    _gns3_lab_archive_previous_path: "{{ _gns3_lab_archive_path }}.previous"
+
 - name: Validate GNS3 lab archive settings
   ansible.builtin.assert:
     that:
