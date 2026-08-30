@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Added a fail-closed GNS3 restore capacity check before existing project and
+  node-state data is replaced.
+
 ## [0.1.10] - 2026-08-26
 
 ### Fixed

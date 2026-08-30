@@ -65,6 +65,21 @@
         | length == 0
     fail_msg: "GNS3 lab archive contains an unsafe member"
 
+- name: Measure expanded GNS3 lab archive
+  ansible.builtin.command:
+    argv:
+      - "{{ ansible_playbook_python }}"
+      - -c
+      - >-
+        import sys,tarfile; archive=tarfile.open(sys.argv[1], 'r:*');
+        print(sum(member.size for member in archive if member.isfile()));
+        archive.close()
+      - "{{ _gns3_lab_archive_path }}"
+  delegate_to: localhost
+  become: false
+  changed_when: false
+  register: gns3_lab_archive_expanded_size
+
 - name: Protect existing GNS3 data
   ansible.builtin.assert:
     that:
@@ -72,6 +87,53 @@
     fail_msg: >-
       GNS3 lab restore replaces generated controller state. Enable overwrite
       only when restoring a verified archive after redeployment.
+
+- name: Ensure GNS3 data root exists for capacity check
+  ansible.builtin.file:
+    path: "{{ gns3_lab_archive_data_root }}"
+    state: directory
+    owner: "{{ gns3_lab_archive_owner }}"
+    group: "{{ gns3_lab_archive_group }}"
+    mode: "0750"
+
+- name: Read GNS3 lab filesystem capacity
+  ansible.builtin.command:
+    argv:
+      - df
+      - -Pk
+      - "{{ gns3_lab_archive_data_root }}"
+  environment:
+    LC_ALL: C
+  changed_when: false
+  register: gns3_lab_archive_disk_capacity
+
+- name: Resolve GNS3 lab restore capacity
+  ansible.builtin.set_fact:
+    gns3_lab_archive_restore_available_bytes: >-
+      {{
+        (
+          gns3_lab_archive_disk_capacity.stdout_lines[-1].split()[3]
+          | int
+        ) * 1024
+      }}
+    gns3_lab_archive_restore_required_bytes: >-
+      {{
+        (gns3_lab_archive_controller_stat.stat.size | int)
+        + (gns3_lab_archive_expanded_size.stdout | int)
+        + (gns3_lab_archive_restore_free_reserve_bytes | int)
+      }}
+
+- name: Require GNS3 lab restore capacity
+  ansible.builtin.assert:
+    that:
+      - >-
+        gns3_lab_archive_restore_available_bytes | int
+        >= gns3_lab_archive_restore_required_bytes | int
+    fail_msg: >-
+      Insufficient disk space to restore GNS3 labs: required
+      {{ gns3_lab_archive_restore_required_bytes }} bytes, available
+      {{ gns3_lab_archive_restore_available_bytes }} bytes on the filesystem
+      containing {{ gns3_lab_archive_data_root }}.
 
 - name: Read GNS3 service state
   ansible.builtin.service_facts:

@@ -167,6 +167,43 @@
             | list
             | length == 0
 
+    - name: Reject GNS3 restore without sufficient disk space
+      block:
+        - name: Attempt GNS3 restore above available capacity
+          ansible.builtin.include_role:
+            name: hybridops.app.gns3_lab_archive
+          vars:
+            gns3_lab_archive_action: restore
+            gns3_lab_archive_data_root: "{{ test_root }}"
+            gns3_lab_archive_path: "{{ test_archive }}"
+            gns3_lab_archive_expected_sha256: >-
+              {{ gns3_lab_archive_current_checksum }}
+            gns3_lab_archive_overwrite: true
+            gns3_lab_archive_owner: "{{ lookup('env', 'USER') }}"
+            gns3_lab_archive_group: "{{ lookup('pipe', 'id -gn') }}"
+            gns3_lab_archive_manage_service: false
+            gns3_lab_archive_restore_free_reserve_bytes: 9000000000000000000
+      rescue:
+        - name: Record expected GNS3 capacity failure
+          ansible.builtin.set_fact:
+            gns3_lab_archive_capacity_failure_observed: true
+            gns3_lab_archive_capacity_failure_message: >-
+              {{ ansible_failed_result.msg | default('') }}
+
+    - name: Inspect GNS3 project after capacity rejection
+      ansible.builtin.stat:
+        path: "{{ test_root }}/projects/demo/demo.gns3"
+      register: gns3_lab_archive_after_capacity_failure
+
+    - name: Require fail-closed GNS3 capacity check
+      ansible.builtin.assert:
+        that:
+          - gns3_lab_archive_capacity_failure_observed | default(false)
+          - >-
+            'Insufficient disk space to restore GNS3 labs'
+            in gns3_lab_archive_capacity_failure_message
+          - gns3_lab_archive_after_capacity_failure.stat.isreg | default(false)
+
     - name: Remove test data before restore
       ansible.builtin.file:
         path: "{{ test_root }}"

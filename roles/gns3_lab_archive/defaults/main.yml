@@ -8,6 +8,7 @@ gns3_lab_archive_path: ""
 gns3_lab_archive_resolved_path: ""
 gns3_lab_archive_expected_sha256: ""
 gns3_lab_archive_overwrite: false
+gns3_lab_archive_restore_free_reserve_bytes: 67108864
 gns3_lab_archive_include_images: false
 gns3_lab_archive_remote_dir: /tmp/hyops-gns3-lab-archive
 gns3_lab_archive_owner: gns3
