@@ -11,6 +11,12 @@
     name: ssh
     state: restarted
 
+- name: Restart Tomcat9
+  listen: restart tomcat9
+  ansible.builtin.systemd:
+    name: tomcat9
+    state: restarted
+
 - name: Restart EVE-NG guest NAT
   listen: restart eveng guest nat
   ansible.builtin.systemd:

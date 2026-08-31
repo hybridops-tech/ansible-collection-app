@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- Bound the EVE-NG Guacamole daemon and web application to the same IPv4
+  loopback endpoint and suppressed the first-boot wizard on every managed run.
+
 ## [0.1.10] - 2026-08-26
 
 ### Fixed
