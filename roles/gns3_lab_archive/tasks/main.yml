@@ -26,6 +26,7 @@
       - gns3_lab_archive_remote_dir is match('^/')
       - gns3_lab_archive_include_images is boolean
       - gns3_lab_archive_overwrite is boolean
+      - gns3_lab_archive_restore_free_reserve_bytes | int >= 0
       - gns3_lab_archive_manage_service is boolean
       - not gns3_lab_archive_manage_service or gns3_lab_archive_password | length > 0
       - gns3_lab_archive_port | int > 0

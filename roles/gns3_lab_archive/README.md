@@ -29,3 +29,6 @@ gns3_lab_archive_overwrite: true
 
 The server is stopped while controller state is copied or restored and is
 started again before the role returns.
+
+Restore verifies that the target filesystem can hold the compressed archive,
+its expanded contents, and the free-space reserve before replacing data.
