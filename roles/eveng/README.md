@@ -60,6 +60,12 @@ Kernel parameters applied when `eveng_configure_sysctl: true`:
 - `net.ipv4.conf.all.rp_filter=0`
 - `net.ipv4.conf.default.rp_filter=0`
 
+### HTML5 console
+
+The role binds `guacd` to `127.0.0.1:4822`, configures the Guacamole web
+application to use that endpoint, and verifies Tomcat on port `8080` before
+configuration completes. Neither port is exposed externally.
+
 ### Guest NAT egress
 
 Guest egress is opt-in so existing on-prem network designs are unchanged:

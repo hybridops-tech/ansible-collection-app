@@ -157,50 +157,57 @@
         state: touch
         mode: '0644'
 
-    - name: Configure OVF
-      when: eveng_bypass_wizard | default(true) | bool
-      block:
-        - name: Check OVF configured marker
-          ansible.builtin.stat:
-            path: /opt/ovf/.configured
-          register: ovf_configured
-
-        - name: Write OVF configured marker
-          ansible.builtin.file:
-            path: /opt/ovf/.configured
-            state: touch
-            mode: '0644'
-          when: not ovf_configured.stat.exists
-
-        - name: Remove ovfconfig.sh from bashrc
-          ansible.builtin.lineinfile:
-            path: /root/.bashrc
-            regexp: '^/opt/ovf/ovfconfig.sh'
-            state: absent
-
-        - name: Remove EVE-NG wizard profile script
-          ansible.builtin.file:
-            path: /etc/profile.d/eveng-wizard.sh
-            state: absent
-
-        - name: Render OVF variables
-          ansible.builtin.lineinfile:
-            path: /opt/ovf/ovf.variables
-            regexp: '^{{ item.key }}='
-            line: "{{ item.key }}={{ item.value }}"
-            create: true
-            mode: "0644"
-          loop:
-            - key: 'HNNAME'
-              value: "{{ _eveng_hostname }}"
-            - key: 'DOMAIN'
-              value: "{{ _eveng_domain }}"
-          when: not ovf_configured.stat.exists
-
     - name: Restart systemd-logind
       ansible.builtin.systemd:
         name: systemd-logind
         state: restarted
+
+- name: Suppress the EVE-NG first-boot wizard
+  when: eveng_bypass_wizard | default(true) | bool
+  block:
+    - name: Render OVF variables
+      ansible.builtin.lineinfile:
+        path: /opt/ovf/ovf.variables
+        regexp: '^{{ item.key }}='
+        line: "{{ item.key }}={{ item.value }}"
+        create: true
+        mode: "0644"
+      loop:
+        - key: 'HNNAME'
+          value: "{{ _eveng_hostname }}"
+        - key: 'DOMAIN'
+          value: "{{ _eveng_domain }}"
+
+    - name: Write OVF configured marker
+      ansible.builtin.file:
+        path: /opt/ovf/.configured
+        state: touch
+        access_time: preserve
+        modification_time: preserve
+        mode: "0644"
+
+    - name: Remove ovfconfig.sh from bashrc
+      ansible.builtin.lineinfile:
+        path: /root/.bashrc
+        regexp: '^\s*/opt/ovf/ovfconfig\.sh\s*$'
+        state: absent
+
+    - name: Remove EVE-NG wizard profile script
+      ansible.builtin.file:
+        path: /etc/profile.d/eveng-wizard.sh
+        state: absent
+
+    - name: Check OVF profile hook
+      ansible.builtin.stat:
+        path: /etc/profile.d/ovf.sh
+      register: eveng_ovf_profile_hook
+
+    - name: Disable the OVF login wizard hook
+      ansible.builtin.lineinfile:
+        path: /etc/profile.d/ovf.sh
+        regexp: '^\s*/opt/ovf/ovfconfig\.sh\s*$'
+        state: absent
+      when: eveng_ovf_profile_hook.stat.exists
 
 - name: Install Python MySQL library
   ansible.builtin.apt:
@@ -216,6 +223,93 @@
   ansible.builtin.fail:
     msg: "Installation failed - /opt/unetlab/html/api.php not found"
   when: not eveng_verified.stat.exists
+
+- name: Configure Guacamole loopback transport
+  block:
+    - name: Write guacd configuration
+      ansible.builtin.copy:
+        content: |
+          [daemon]
+          pid_file = /var/run/guacd.pid
+
+          [server]
+          bind_host = 127.0.0.1
+          bind_port = 4822
+        dest: /etc/guacamole/guacd.conf
+        owner: root
+        group: root
+        mode: "0644"
+      register: eveng_guacd_config
+
+    - name: Configure Guacamole daemon endpoint
+      ansible.builtin.lineinfile:
+        path: /etc/guacamole/guacamole.properties
+        regexp: '^{{ item.key }}\s*:'
+        line: "{{ item.key }}: {{ item.value }}"
+        create: false
+      loop:
+        - key: guacd-hostname
+          value: 127.0.0.1
+        - key: guacd-port
+          value: 4822
+      register: eveng_guacamole_endpoint
+      notify: restart tomcat9
+
+    - name: Stop guacd before applying changed transport settings
+      ansible.builtin.systemd:
+        name: guacd
+        state: stopped
+      when: >-
+        eveng_guacd_config.changed or
+        eveng_guacamole_endpoint.changed
+
+    - name: Stop stale guacd processes
+      ansible.builtin.command:
+        argv:
+          - pkill
+          - -x
+          - guacd
+      register: eveng_guacd_kill
+      changed_when: eveng_guacd_kill.rc == 0
+      failed_when: eveng_guacd_kill.rc not in [0, 1]
+      when: >-
+        eveng_guacd_config.changed or
+        eveng_guacamole_endpoint.changed
+
+    - name: Remove stale guacd PID file
+      ansible.builtin.file:
+        path: /var/run/guacd.pid
+        state: absent
+      when: >-
+        eveng_guacd_config.changed or
+        eveng_guacamole_endpoint.changed
+
+    - name: Start guacd
+      ansible.builtin.systemd:
+        name: guacd
+        state: started
+        enabled: true
+
+    - name: Start Tomcat
+      ansible.builtin.systemd:
+        name: tomcat9
+        state: started
+        enabled: true
+
+    - name: Apply Guacamole service changes
+      ansible.builtin.meta: flush_handlers
+
+    - name: Wait for guacd IPv4 loopback
+      ansible.builtin.wait_for:
+        host: 127.0.0.1
+        port: 4822
+        timeout: 15
+
+    - name: Wait for the Guacamole web application
+      ansible.builtin.wait_for:
+        host: 127.0.0.1
+        port: 8080
+        timeout: 30
 
 - name: Detect PHP version
   ansible.builtin.shell: php -r "echo PHP_MAJOR_VERSION .'.' .PHP_MINOR_VERSION;"

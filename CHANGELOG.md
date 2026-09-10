@@ -7,15 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.10] - 2026-08-26
+
 ### Added
 
 - Added a fail-closed GNS3 restore capacity check before existing project and
   node-state data is replaced.
 
-## [0.1.10] - 2026-08-26
-
 ### Fixed
 
+- Bound the EVE-NG Guacamole daemon and web application to the same IPv4
+  loopback endpoint and verified both services before configuration completes.
 - Staged and verified GNS3 project exports before promotion, retaining one
   verified fallback archive and manifest.
 
