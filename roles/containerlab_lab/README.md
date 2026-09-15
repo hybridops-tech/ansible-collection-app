@@ -16,7 +16,7 @@ Supported actions:
 
 `containerlab_lab_required_images` is an optional preflight list. Missing images are fetched only when `containerlab_lab_pull_missing_images` is enabled. This component does not distribute proprietary NOS images.
 
-`containerlab_lab_local_image_archives` loads operator-supplied OCI archives
+`containerlab_lab_local_image_archives` loads operator-supplied container image archives
 when the expected image is absent. Each entry declares an absolute controller
 path, the image reference expected after loading, and an optional SHA-256
 digest. The operator remains responsible for image and licence rights.

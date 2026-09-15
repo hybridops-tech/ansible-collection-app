@@ -9,7 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- Added checksum-aware loading of operator-supplied Containerlab OCI image
+- Added checksum-aware loading of operator-supplied Containerlab image
   archives on fresh managed hosts.
 
 ### Fixed
