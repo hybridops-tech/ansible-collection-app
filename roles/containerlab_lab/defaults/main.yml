@@ -20,4 +20,6 @@ containerlab_lab_snapshot_node_filter: ""
 containerlab_lab_snapshot_timeout: 5m
 containerlab_lab_required_images: []
 containerlab_lab_pull_missing_images: false
+containerlab_lab_local_image_archives: []
+containerlab_lab_image_cache_dir: /var/cache/hybridops/containerlab/images
 containerlab_lab_disable_version_check: true

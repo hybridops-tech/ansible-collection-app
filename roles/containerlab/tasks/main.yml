@@ -2,19 +2,21 @@
 - name: Validate Containerlab host inputs
   ansible.builtin.assert:
     that:
-      - ansible_distribution == "Ubuntu"
-      - ansible_distribution_version is version('22.04', '>=')
-      - ansible_distribution_version is version('24.04', '<=')
-      - ansible_architecture in containerlab_supported_architectures
+      - ansible_facts['distribution'] == "Ubuntu"
+      - ansible_facts['distribution_version'] is version('22.04', '>=')
+      - ansible_facts['distribution_version'] is version('24.04', '<=')
+      - ansible_facts['architecture'] in containerlab_supported_architectures
       - containerlab_version | length > 0
       - containerlab_operator_user | length > 0
+      - containerlab_post_install_connectivity_wait_s | int > 0
     fail_msg: >-
       Containerlab requires Ubuntu 22.04-24.04 on a supported architecture,
       a pinned version, and an existing operator user.
 
 - name: Resolve Containerlab package architecture
   ansible.builtin.set_fact:
-    containerlab_package_arch: "{{ containerlab_supported_architectures[ansible_architecture] }}"
+    containerlab_package_arch: >-
+      {{ containerlab_supported_architectures[ansible_facts['architecture']] }}
 
 - name: Resolve known Containerlab package checksum
   ansible.builtin.set_fact:
@@ -55,6 +57,7 @@
     name: "{{ containerlab_docker_package }}"
     state: present
     update_cache: true
+  register: containerlab_docker_install
   when: containerlab_install_docker | bool
 
 - name: Ensure Docker service is enabled and running
@@ -62,7 +65,25 @@
     name: docker
     enabled: true
     state: started
+  register: containerlab_docker_service
   when: containerlab_install_docker | bool
+
+- name: Reset SSH connection after Docker installation
+  ansible.builtin.meta: reset_connection
+  when:
+    - containerlab_install_docker | bool
+    - >-
+      containerlab_docker_install.changed | default(false) or
+      containerlab_docker_service.changed | default(false)
+
+- name: Wait for SSH after Docker installation
+  ansible.builtin.wait_for_connection:
+    timeout: "{{ containerlab_post_install_connectivity_wait_s | int }}"
+  when:
+    - containerlab_install_docker | bool
+    - >-
+      containerlab_docker_install.changed | default(false) or
+      containerlab_docker_service.changed | default(false)
 
 - name: Create Containerlab package directory
   ansible.builtin.file:

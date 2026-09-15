@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Added checksum-aware loading of operator-supplied Containerlab OCI image
+  archives on fresh managed hosts.
+
+### Fixed
+
+- Reset and revalidated SSH after Docker installation on fresh Containerlab
+  hosts.
+
 ## [0.1.11] - 2026-09-15
 
 ### Fixed

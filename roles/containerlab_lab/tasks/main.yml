@@ -85,6 +85,27 @@
     not (_containerlab_lab_effective_action == 'destroy' and
          _containerlab_lab_effective_destroy_all | bool)
 
+- name: Create local image archive cache
+  ansible.builtin.file:
+    path: "{{ containerlab_lab_image_cache_dir }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0700"
+  when:
+    - containerlab_lab_local_image_archives | length > 0
+    - _containerlab_lab_effective_action in ['deploy', 'redeploy']
+
+- name: Resolve local image archives
+  ansible.builtin.include_tasks: local-image-archive.yml
+  loop: "{{ containerlab_lab_local_image_archives }}"
+  loop_control:
+    loop_var: containerlab_lab_local_image_archive
+    label: >-
+      {{ containerlab_lab_local_image_archive.image
+         | default(containerlab_lab_local_image_archive.path | default('invalid')) }}
+  when: _containerlab_lab_effective_action in ['deploy', 'redeploy']
+
 - name: Inspect required local images
   ansible.builtin.command:
     argv:
@@ -301,3 +322,4 @@
       stdout: "{{ containerlab_lab_command.stdout | default('') }}"
       stderr: "{{ containerlab_lab_command.stderr | default('') }}"
       restore_all_dir: "{{ containerlab_lab_restore_all_dir }}"
+      local_images: "{{ containerlab_lab_local_image_results | default([]) }}"
