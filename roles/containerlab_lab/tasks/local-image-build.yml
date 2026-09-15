@@ -14,6 +14,13 @@
         containerlab_lab_local_image_build.version | default('') | string
         is match('^[0-9][0-9A-Za-z._-]{0,63}$')
       - containerlab_lab_local_image_build.type | default('l3') in ['l3', 'l2']
+      - >-
+        (containerlab_lab_local_image_build.format | default('binary'))
+        in ['binary', 'oci_archive']
+      - >-
+        (containerlab_lab_local_image_build.format | default('binary')) != 'oci_archive'
+        or containerlab_lab_local_image_build.version | string
+        is match('^[0-9]+(\.[0-9]+)+$')
       - containerlab_lab_local_image_build.authorised_use | default(false) is boolean
       - containerlab_lab_local_image_build.authorised_use | default(false) | bool
       - >-
@@ -29,7 +36,7 @@
     fail_msg: >-
       Each local Containerlab image build requires kind=cisco_iol, an absolute
       controller source path, a version, type l3 or l2, authorised_use=true,
-      and an optional SHA-256 digest.
+      format binary or oci_archive, and an optional SHA-256 digest.
   delegate_to: localhost
   become: false
 
@@ -45,6 +52,8 @@
         ('L2-' if containerlab_lab_local_image_build.type | default('l3') == 'l2' else '')
         ~ containerlab_lab_local_image_build.version
       }}
+    containerlab_lab_local_image_build_source_format: >-
+      {{ containerlab_lab_local_image_build.format | default('binary') }}
 
 - name: Inspect expected built Containerlab image
   ansible.builtin.command:
@@ -88,7 +97,14 @@
       {{ containerlab_lab_image_build_root }}/{{
         containerlab_lab_local_image_build_source_state.stat.checksum }}
     containerlab_lab_local_image_build_filename: >-
+      {%- if containerlab_lab_local_image_build_source_format == 'oci_archive' -%}
+      {{ 'ioll2'
+         if containerlab_lab_local_image_build.type | default('l3') == 'l2'
+         else 'iol' }}-xe-{{
+        containerlab_lab_local_image_build.version | replace('.', '-') }}.tar.gz
+      {%- else -%}
       cisco_iol-{{ containerlab_lab_local_image_build_tag }}.bin
+      {%- endif -%}
   when: containerlab_lab_local_image_build_initial.rc != 0
 
 - name: Build missing Containerlab image
@@ -97,6 +113,7 @@
     - name: Install local image build dependencies
       ansible.builtin.apt:
         name:
+          - binutils
           - file
           - git
           - make
@@ -181,7 +198,7 @@
         mode: "0600"
       no_log: true
 
-    - name: Inspect local IOL image build source format
+    - name: Inspect local IOL binary format
       ansible.builtin.command:
         argv:
           - file
@@ -191,8 +208,9 @@
               containerlab_lab_local_image_build_filename }}
       register: containerlab_lab_local_image_build_format
       changed_when: false
+      when: containerlab_lab_local_image_build_source_format == 'binary'
 
-    - name: Verify local IOL image build source format
+    - name: Verify local IOL binary architecture
       ansible.builtin.assert:
         that:
           - "'ELF 64-bit' in containerlab_lab_local_image_build_format.stdout"
@@ -202,6 +220,42 @@
         fail_msg: >-
           Containerlab requires a supported 64-bit x86 IOL-XE binary for this
           build path.
+      when: containerlab_lab_local_image_build_source_format == 'binary'
+
+    - name: Verify local IOL binary structure
+      ansible.builtin.command:
+        argv:
+          - readelf
+          - --file-header
+          - >-
+            {{ containerlab_lab_local_image_build_dir }}/cisco/iol/{{
+              containerlab_lab_local_image_build_filename }}
+      changed_when: false
+      when: containerlab_lab_local_image_build_source_format == 'binary'
+
+    - name: Inspect local IOL OCI archive
+      ansible.builtin.command:
+        argv:
+          - tar
+          - -xzOf
+          - >-
+            {{ containerlab_lab_local_image_build_dir }}/cisco/iol/{{
+              containerlab_lab_local_image_build_filename }}
+          - manifest.json
+      changed_when: false
+      register: containerlab_lab_local_image_build_manifest
+      when: containerlab_lab_local_image_build_source_format == 'oci_archive'
+
+    - name: Verify local IOL OCI archive manifest
+      ansible.builtin.assert:
+        that:
+          - >-
+            containerlab_lab_local_image_build_manifest.stdout
+            is search('blobs/sha256/[0-9a-f]{64}')
+        fail_msg: >-
+          The supplied IOL OCI archive does not contain a supported image
+          manifest.
+      when: containerlab_lab_local_image_build_source_format == 'oci_archive'
 
     - name: Build local IOL Containerlab image
       ansible.builtin.command:

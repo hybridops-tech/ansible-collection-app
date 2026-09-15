@@ -21,7 +21,7 @@ when the expected image is absent. Each entry declares an absolute controller
 path, the image reference expected after loading, and an optional SHA-256
 digest. The operator remains responsible for image and licence rights.
 
-`containerlab_lab_local_image_builds` builds an operator-supplied 64-bit Cisco IOL-XE
-binary on the managed host when the expected image is absent. Each declaration
-requires an explicit authorised-use acknowledgement. The source and build tree
-are removed after the build.
+`containerlab_lab_local_image_builds` builds an operator-supplied 64-bit Cisco
+IOL-XE binary or supported OCI archive on the managed host when the expected
+image is absent. Each declaration requires an explicit authorised-use
+acknowledgement. The source and build tree are removed after the build.

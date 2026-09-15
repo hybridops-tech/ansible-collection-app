@@ -8,12 +8,13 @@
   vars:
     containerlab_lab_image_build_root: /var/cache/hybridops/containerlab-build-test
     containerlab_lab_vrnetlab_repository: https://github.com/srl-labs/vrnetlab.git
-    containerlab_lab_vrnetlab_revision: 9e68d58e4dd6b3b5666523007037b69a678bca39
+    containerlab_lab_vrnetlab_revision: 3a34fa63d73843c871f248e2df2ffa5c038183ce
     containerlab_lab_local_image_build:
       kind: cisco_iol
-      source: "{{ lookup('env', 'HYOPS_TEST_IOL_BINARY') }}"
-      version: 99.99-build-test
-      type: l3
+      source: "{{ lookup('env', 'HYOPS_TEST_IOL_SOURCE') }}"
+      version: "{{ lookup('env', 'HYOPS_TEST_IOL_VERSION') | default('99.99', true) }}"
+      type: "{{ lookup('env', 'HYOPS_TEST_IOL_TYPE') | default('l3', true) }}"
+      format: "{{ lookup('env', 'HYOPS_TEST_IOL_FORMAT') | default('binary', true) }}"
       authorised_use: true
 
   tasks:
@@ -27,7 +28,9 @@
           - containerlab_lab_local_image_build_results[0].built | bool
           - >-
             containerlab_lab_local_image_build_results[0].image ==
-            'vrnetlab/cisco_iol:99.99-build-test'
+            'vrnetlab/cisco_iol:' ~
+            ('L2-' if containerlab_lab_local_image_build.type == 'l2' else '') ~
+            containerlab_lab_local_image_build.version
           - >-
             containerlab_lab_local_image_build_results[0].image_id
             is match('^sha256:[0-9a-f]{64}$')

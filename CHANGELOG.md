@@ -11,8 +11,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Added checksum-aware loading of operator-supplied Containerlab image
   archives on fresh managed hosts.
-- Added managed-host builds for operator-supplied Cisco IOL-XE binaries using
-  a pinned vrnetlab revision.
+- Added managed-host builds for operator-supplied Cisco IOL-XE binaries and
+  supported OCI archives using a pinned vrnetlab revision, with structural
+  validation before build.
 
 ### Fixed
 

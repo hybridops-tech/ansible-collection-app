@@ -130,10 +130,37 @@ jobs:
           mkdir -p "${test_root}"
           printf '%s\n' 'int main(void) { return 0; }' > "${test_root}/iol-test.c"
           cc -O2 -o "${test_root}/iol-test.bin" "${test_root}/iol-test.c"
-          HYOPS_TEST_IOL_BINARY="${test_root}/iol-test.bin" \
+          HYOPS_TEST_IOL_SOURCE="${test_root}/iol-test.bin" \
             ansible-playbook roles/containerlab_lab/tests/local-image-build.yml
-          docker image inspect vrnetlab/cisco_iol:99.99-build-test >/dev/null
-          docker image rm vrnetlab/cisco_iol:99.99-build-test
+          docker image inspect vrnetlab/cisco_iol:99.99 >/dev/null
+          docker image rm vrnetlab/cisco_iol:99.99
+
+          cc -O2 -o "${test_root}/iol-truncated.bin" "${test_root}/iol-test.c"
+          truncate -s 128 "${test_root}/iol-truncated.bin"
+          if HYOPS_TEST_IOL_SOURCE="${test_root}/iol-truncated.bin" \
+            HYOPS_TEST_IOL_VERSION="99.98" \
+            ansible-playbook roles/containerlab_lab/tests/local-image-build.yml \
+            >"${test_root}/truncated.log" 2>&1; then
+            echo "truncated IOL binary was accepted"
+            exit 1
+          fi
+          grep -q "Verify local IOL binary structure" "${test_root}/truncated.log"
+
+          mkdir -p "${test_root}/oci/blobs/sha256" "${test_root}/layer"
+          cc -O2 -o "${test_root}/layer/test.iol" "${test_root}/iol-test.c"
+          tar -C "${test_root}/layer" -cf "${test_root}/layer.tar" test.iol
+          layer_sha="$(sha256sum "${test_root}/layer.tar" | awk '{print $1}')"
+          cp "${test_root}/layer.tar" "${test_root}/oci/blobs/sha256/${layer_sha}"
+          printf '{"Layers":["blobs/sha256/%s"]}\n' "${layer_sha}" \
+            >"${test_root}/oci/manifest.json"
+          tar -C "${test_root}/oci" -czf "${test_root}/iol-xe-99-97.tar.gz" \
+            manifest.json blobs
+          HYOPS_TEST_IOL_SOURCE="${test_root}/iol-xe-99-97.tar.gz" \
+            HYOPS_TEST_IOL_VERSION="99.97" \
+            HYOPS_TEST_IOL_FORMAT="oci_archive" \
+            ansible-playbook roles/containerlab_lab/tests/local-image-build.yml
+          docker image inspect vrnetlab/cisco_iol:99.97 >/dev/null
+          docker image rm vrnetlab/cisco_iol:99.97
 
       - name: Build collection (sanity)
         run: |
