@@ -106,6 +106,22 @@ jobs:
           printf '  %s\n' "${LINT_TARGETS[@]}"
           ansible-lint -c .config/linters/ansible-lint.yml "${LINT_TARGETS[@]}"
 
+      - name: Verify local Containerlab image loading
+        shell: bash
+        run: |
+          set -euo pipefail
+          test_root="${RUNNER_TEMP}/containerlab-image-test"
+          mkdir -p "${test_root}/rootfs"
+          printf '%s\n' 'hybridops-containerlab-image-test' > "${test_root}/rootfs/proof"
+          tar -C "${test_root}/rootfs" -cf "${test_root}/rootfs.tar" .
+          docker import "${test_root}/rootfs.tar" hybridops/containerlab-archive-test:1
+          docker save --output "${test_root}/image.tar" hybridops/containerlab-archive-test:1
+          docker image rm hybridops/containerlab-archive-test:1
+          HYOPS_TEST_IMAGE_ARCHIVE="${test_root}/image.tar" \
+            ansible-playbook roles/containerlab_lab/tests/local-image-archive.yml
+          docker image inspect hybridops/containerlab-archive-test:1 >/dev/null
+          docker image rm hybridops/containerlab-archive-test:1
+
       - name: Build collection (sanity)
         run: |
           ansible-galaxy collection build --force

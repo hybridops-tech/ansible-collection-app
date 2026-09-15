@@ -1,0 +1,44 @@
+---
+- name: Verify local Containerlab image archive loading
+  hosts: localhost
+  connection: local
+  become: true
+  gather_facts: false
+
+  vars:
+    containerlab_lab_image_cache_dir: /var/cache/hybridops/containerlab-image-test
+    containerlab_lab_local_image_archive:
+      path: "{{ lookup('env', 'HYOPS_TEST_IMAGE_ARCHIVE') }}"
+      image: "hybridops/containerlab-archive-test:1"
+
+  tasks:
+    - name: Load absent test image
+      ansible.builtin.include_tasks: ../tasks/local-image-archive.yml
+
+    - name: Verify first load result
+      ansible.builtin.assert:
+        that:
+          - containerlab_lab_local_image_results | length == 1
+          - containerlab_lab_local_image_results[0].loaded | bool
+          - containerlab_lab_local_image_results[0].image_id is match('^sha256:[0-9a-f]{64}$')
+
+    - name: Remove controller archive after first load
+      ansible.builtin.file:
+        path: "{{ containerlab_lab_local_image_archive.path }}"
+        state: absent
+      delegate_to: localhost
+      become: false
+
+    - name: Reset test result
+      ansible.builtin.set_fact:
+        containerlab_lab_local_image_results: []
+
+    - name: Recheck existing test image without source archive
+      ansible.builtin.include_tasks: ../tasks/local-image-archive.yml
+
+    - name: Verify existing image was not reloaded
+      ansible.builtin.assert:
+        that:
+          - containerlab_lab_local_image_results | length == 1
+          - not (containerlab_lab_local_image_results[0].loaded | bool)
+          - containerlab_lab_local_image_results[0].image_id is match('^sha256:[0-9a-f]{64}$')
