@@ -1,0 +1,258 @@
+---
+- name: Validate local image build declaration
+  ansible.builtin.assert:
+    that:
+      - containerlab_lab_local_image_build is mapping
+      - containerlab_lab_local_image_build.kind | default('') == 'cisco_iol'
+      - >-
+        containerlab_lab_local_image_build.source | default('') | string | trim
+        | length > 0
+      - >-
+        containerlab_lab_local_image_build.source | default('') | string
+        is match('^/')
+      - >-
+        containerlab_lab_local_image_build.version | default('') | string
+        is match('^[0-9][0-9A-Za-z._-]{0,63}$')
+      - containerlab_lab_local_image_build.type | default('l3') in ['l3', 'l2']
+      - containerlab_lab_local_image_build.authorised_use | default(false) is boolean
+      - containerlab_lab_local_image_build.authorised_use | default(false) | bool
+      - >-
+        containerlab_lab_local_image_build.sha256 | default('') | string
+        | length == 0 or
+        containerlab_lab_local_image_build.sha256 | string
+        is match('^[0-9a-f]{64}$')
+      - containerlab_lab_image_build_root | string is match('^/')
+      - containerlab_lab_vrnetlab_repository | string | trim | length > 0
+      - >-
+        containerlab_lab_vrnetlab_revision | string
+        is match('^[0-9a-f]{40}$')
+    fail_msg: >-
+      Each local Containerlab image build requires kind=cisco_iol, an absolute
+      controller source path, a version, type l3 or l2, authorised_use=true,
+      and an optional SHA-256 digest.
+  delegate_to: localhost
+  become: false
+
+- name: Resolve local image build identity
+  ansible.builtin.set_fact:
+    containerlab_lab_local_image_build_tag: >-
+      {{
+        ('L2-' if containerlab_lab_local_image_build.type | default('l3') == 'l2' else '')
+        ~ containerlab_lab_local_image_build.version
+      }}
+    containerlab_lab_local_image_build_ref: >-
+      vrnetlab/cisco_iol:{{
+        ('L2-' if containerlab_lab_local_image_build.type | default('l3') == 'l2' else '')
+        ~ containerlab_lab_local_image_build.version
+      }}
+
+- name: Inspect expected built Containerlab image
+  ansible.builtin.command:
+    argv:
+      - docker
+      - image
+      - inspect
+      - "{{ containerlab_lab_local_image_build_ref }}"
+  register: containerlab_lab_local_image_build_initial
+  changed_when: false
+  failed_when: false
+
+- name: Inspect local image build source
+  ansible.builtin.stat:
+    path: "{{ containerlab_lab_local_image_build.source }}"
+    checksum_algorithm: sha256
+  register: containerlab_lab_local_image_build_source_state
+  delegate_to: localhost
+  become: false
+  when: containerlab_lab_local_image_build_initial.rc != 0
+
+- name: Verify local image build source
+  ansible.builtin.assert:
+    that:
+      - containerlab_lab_local_image_build_source_state.stat.exists
+      - containerlab_lab_local_image_build_source_state.stat.isreg
+      - >-
+        containerlab_lab_local_image_build.sha256 | default('') | length == 0 or
+        containerlab_lab_local_image_build_source_state.stat.checksum ==
+        containerlab_lab_local_image_build.sha256
+    fail_msg: >-
+      The local Containerlab image build source is missing, is not a regular
+      file, or does not match its declared SHA-256 digest.
+  delegate_to: localhost
+  become: false
+  when: containerlab_lab_local_image_build_initial.rc != 0
+
+- name: Resolve local image build workspace
+  ansible.builtin.set_fact:
+    containerlab_lab_local_image_build_dir: >-
+      {{ containerlab_lab_image_build_root }}/{{
+        containerlab_lab_local_image_build_source_state.stat.checksum }}
+    containerlab_lab_local_image_build_filename: >-
+      cisco_iol-{{ containerlab_lab_local_image_build_tag }}.bin
+  when: containerlab_lab_local_image_build_initial.rc != 0
+
+- name: Build missing Containerlab image
+  when: containerlab_lab_local_image_build_initial.rc != 0
+  block:
+    - name: Install local image build dependencies
+      ansible.builtin.apt:
+        name:
+          - file
+          - git
+          - make
+        state: present
+        update_cache: true
+
+    - name: Create local image build root
+      ansible.builtin.file:
+        path: "{{ containerlab_lab_image_build_root }}"
+        state: directory
+        owner: root
+        group: root
+        mode: "0700"
+
+    - name: Create local image build workspace
+      ansible.builtin.file:
+        path: "{{ containerlab_lab_local_image_build_dir }}"
+        state: directory
+        owner: root
+        group: root
+        mode: "0700"
+
+    - name: Initialise vrnetlab source tree
+      ansible.builtin.command:
+        argv:
+          - git
+          - init
+          - "{{ containerlab_lab_local_image_build_dir }}"
+      changed_when: true
+
+    - name: Fetch pinned vrnetlab revision
+      ansible.builtin.command:
+        argv:
+          - git
+          - -C
+          - "{{ containerlab_lab_local_image_build_dir }}"
+          - fetch
+          - --depth
+          - "1"
+          - "{{ containerlab_lab_vrnetlab_repository }}"
+          - "{{ containerlab_lab_vrnetlab_revision }}"
+      changed_when: true
+
+    - name: Check out pinned vrnetlab revision
+      ansible.builtin.command:
+        argv:
+          - git
+          - -C
+          - "{{ containerlab_lab_local_image_build_dir }}"
+          - checkout
+          - --detach
+          - FETCH_HEAD
+      changed_when: true
+
+    - name: Read checked-out vrnetlab revision
+      ansible.builtin.command:
+        argv:
+          - git
+          - -C
+          - "{{ containerlab_lab_local_image_build_dir }}"
+          - rev-parse
+          - HEAD
+      register: containerlab_lab_local_image_build_revision
+      changed_when: false
+
+    - name: Verify checked-out vrnetlab revision
+      ansible.builtin.assert:
+        that:
+          - >-
+            containerlab_lab_local_image_build_revision.stdout | trim ==
+            containerlab_lab_vrnetlab_revision
+        fail_msg: "The checked-out vrnetlab revision does not match the declared revision."
+
+    - name: Stage local IOL image build source
+      ansible.builtin.copy:
+        src: "{{ containerlab_lab_local_image_build.source }}"
+        dest: >-
+          {{ containerlab_lab_local_image_build_dir }}/cisco/iol/{{
+            containerlab_lab_local_image_build_filename }}
+        owner: root
+        group: root
+        mode: "0600"
+      no_log: true
+
+    - name: Inspect local IOL image build source format
+      ansible.builtin.command:
+        argv:
+          - file
+          - --brief
+          - >-
+            {{ containerlab_lab_local_image_build_dir }}/cisco/iol/{{
+              containerlab_lab_local_image_build_filename }}
+      register: containerlab_lab_local_image_build_format
+      changed_when: false
+
+    - name: Verify local IOL image build source format
+      ansible.builtin.assert:
+        that:
+          - "'ELF 64-bit' in containerlab_lab_local_image_build_format.stdout"
+          - >-
+            'x86-64' in containerlab_lab_local_image_build_format.stdout or
+            'x86_64' in containerlab_lab_local_image_build_format.stdout
+        fail_msg: >-
+          Containerlab requires a supported 64-bit x86 IOL-XE binary for this
+          build path.
+
+    - name: Build local IOL Containerlab image
+      ansible.builtin.command:
+        argv:
+          - make
+          - docker-image
+        chdir: "{{ containerlab_lab_local_image_build_dir }}/cisco/iol"
+      environment:
+        DOCKER_DEFAULT_PLATFORM: linux/amd64
+      changed_when: true
+
+  always:
+    - name: Remove local image build workspace
+      ansible.builtin.file:
+        path: "{{ containerlab_lab_local_image_build_dir }}"
+        state: absent
+
+- name: Verify built Containerlab image identity
+  ansible.builtin.command:
+    argv:
+      - docker
+      - image
+      - inspect
+      - --format
+      - "{{ '{{.Id}} {{.Os}}/{{.Architecture}}' }}"
+      - "{{ containerlab_lab_local_image_build_ref }}"
+  register: containerlab_lab_local_image_build_final
+  changed_when: false
+
+- name: Verify built Containerlab image platform
+  ansible.builtin.assert:
+    that:
+      - >-
+        containerlab_lab_local_image_build_final.stdout | trim
+        is match('^sha256:[0-9a-f]{64} linux/amd64$')
+    fail_msg: "The built Containerlab image is not a verified linux/amd64 image."
+
+- name: Record built Containerlab image identity
+  ansible.builtin.set_fact:
+    containerlab_lab_local_image_build_results: >-
+      {{
+        containerlab_lab_local_image_build_results | default([])
+        + [{
+          'image': containerlab_lab_local_image_build_ref,
+          'image_id': (containerlab_lab_local_image_build_final.stdout | trim).split()[0],
+          'source_sha256': (
+            containerlab_lab_local_image_build_source_state.stat.checksum
+            if containerlab_lab_local_image_build_initial.rc != 0
+            else containerlab_lab_local_image_build.sha256 | default('')
+          ),
+          'builder_revision': containerlab_lab_vrnetlab_revision,
+          'built': containerlab_lab_local_image_build_initial.rc != 0
+        }]
+      }}

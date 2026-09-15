@@ -106,6 +106,14 @@
          | default(containerlab_lab_local_image_archive.path | default('invalid')) }}
   when: _containerlab_lab_effective_action in ['deploy', 'redeploy']
 
+- name: Build local Containerlab images
+  ansible.builtin.include_tasks: local-image-build.yml
+  loop: "{{ containerlab_lab_local_image_builds }}"
+  loop_control:
+    loop_var: containerlab_lab_local_image_build
+    label: "{{ containerlab_lab_local_image_build.version | default('invalid') }}"
+  when: _containerlab_lab_effective_action in ['deploy', 'redeploy']
+
 - name: Inspect required local images
   ansible.builtin.command:
     argv:
@@ -323,3 +331,4 @@
       stderr: "{{ containerlab_lab_command.stderr | default('') }}"
       restore_all_dir: "{{ containerlab_lab_restore_all_dir }}"
       local_images: "{{ containerlab_lab_local_image_results | default([]) }}"
+      local_image_builds: "{{ containerlab_lab_local_image_build_results | default([]) }}"

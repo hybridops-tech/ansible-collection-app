@@ -122,6 +122,19 @@ jobs:
           docker image inspect hybridops/containerlab-archive-test:1 >/dev/null
           docker image rm hybridops/containerlab-archive-test:1
 
+      - name: Verify local Containerlab image build
+        shell: bash
+        run: |
+          set -euo pipefail
+          test_root="${RUNNER_TEMP}/containerlab-image-build-test"
+          mkdir -p "${test_root}"
+          printf '%s\n' 'int main(void) { return 0; }' > "${test_root}/iol-test.c"
+          cc -O2 -o "${test_root}/iol-test.bin" "${test_root}/iol-test.c"
+          HYOPS_TEST_IOL_BINARY="${test_root}/iol-test.bin" \
+            ansible-playbook roles/containerlab_lab/tests/local-image-build.yml
+          docker image inspect vrnetlab/cisco_iol:99.99-build-test >/dev/null
+          docker image rm vrnetlab/cisco_iol:99.99-build-test
+
       - name: Build collection (sanity)
         run: |
           ansible-galaxy collection build --force
