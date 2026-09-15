@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- Prevented additional EVE-NG user credentials from appearing in task output.
+
 ## [0.1.10] - 2026-08-26
 
 ### Added

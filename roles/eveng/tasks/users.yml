@@ -3,12 +3,14 @@
 
 - name: Create user directories
   ansible.builtin.file:
-    path: "/opt/unetlab/labs/{{ item.username }}"
+    path: "/opt/unetlab/labs/{{ item }}"
     state: directory
     owner: www-data
     group: www-data
     mode: "0755"
-  loop: "{{ eveng_users }}"
+  loop: "{{ eveng_users | map(attribute='username') | list }}"
+  loop_control:
+    label: "{{ item }}"
   tags:
     - users
     - user_dirs

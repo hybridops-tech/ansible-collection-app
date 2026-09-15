@@ -494,10 +494,11 @@
 - name: Create user pods
   ansible.builtin.command: >-
     mysql eve_ng_db -e
-    "INSERT IGNORE INTO pods (id, username) VALUES ({{ idx + 1 }}, '{{ item.username }}');"
-  loop: "{{ eveng_users | default([]) }}"
+    "INSERT IGNORE INTO pods (id, username) VALUES ({{ idx + 1 }}, '{{ item }}');"
+  loop: "{{ eveng_users | default([]) | map(attribute='username') | list }}"
   loop_control:
     index_var: idx
+    label: "{{ item }}"
   changed_when: false
   failed_when: false
   when:
