@@ -12,6 +12,14 @@
       image: "hybridops/containerlab-archive-test:1"
 
   tasks:
+    - name: Create test image cache
+      ansible.builtin.file:
+        path: "{{ containerlab_lab_image_cache_dir }}"
+        state: directory
+        owner: root
+        group: root
+        mode: "0700"
+
     - name: Load absent test image
       ansible.builtin.include_tasks: ../tasks/local-image-archive.yml
 
