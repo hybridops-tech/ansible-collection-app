@@ -23,8 +23,22 @@
     that:
       - _containerlab_gui_effective_action in ['present', 'absent']
       - containerlab_gui_operator_user | length > 0
+      - containerlab_gui_operator_user is match('^[a-z_][a-z0-9_-]{0,31}$')
       - containerlab_gui_labs_dir is match('^/')
       - containerlab_gui_state_dir is match('^/')
+      - containerlab_gui_labs_dir != '/'
+      - containerlab_gui_state_dir != '/'
+      - "'/../' not in containerlab_gui_labs_dir"
+      - "'/../' not in containerlab_gui_state_dir"
+      - not containerlab_gui_labs_dir.endswith('/..')
+      - not containerlab_gui_state_dir.endswith('/..')
+      - >-
+        (containerlab_gui_state_dir | regex_replace('/+$', '')) !=
+        (containerlab_gui_labs_dir | regex_replace('/+$', ''))
+      - >-
+        not containerlab_gui_state_dir.startswith(
+          containerlab_gui_labs_dir | regex_replace('/+$', '') ~ '/'
+        )
       - containerlab_gui_api_name is match('^[A-Za-z0-9][A-Za-z0-9_.-]+$')
       - containerlab_gui_web_name is match('^[A-Za-z0-9][A-Za-z0-9_.-]+$')
       - containerlab_gui_api_image | length > 0
@@ -36,9 +50,55 @@
       - containerlab_gui_api_port | int != containerlab_gui_web_port | int
       - containerlab_gui_health_timeout_s | int > 0
       - >-
+        _containerlab_gui_effective_action == 'absent' or
         not (containerlab_gui_manage_operator_password | bool) or
         _containerlab_gui_effective_password | length > 0
+      - >-
+        _containerlab_gui_effective_action == 'absent' or
+        not (containerlab_gui_manage_operator_password | bool) or
+        not (_containerlab_gui_effective_password is search('[\r\n]'))
     fail_msg: "Containerlab GUI inputs are invalid."
+
+- name: Inspect Containerlab GUI containers before removal
+  ansible.builtin.command:
+    argv:
+      - docker
+      - inspect
+      - --format
+      - "{{ '{{index .Config.Labels \"io.hybridops.managed\"}}' }}"
+      - "{{ item }}"
+  loop:
+    - "{{ containerlab_gui_web_name }}"
+    - "{{ containerlab_gui_api_name }}"
+  register: containerlab_gui_remove_inspect
+  changed_when: false
+  failed_when: false
+  when: _containerlab_gui_effective_action == 'absent'
+
+- name: Verify Containerlab GUI containers can be inspected before removal
+  ansible.builtin.assert:
+    that:
+      - >-
+        item.rc == 0 or
+        'No such object' in item.stderr or
+        'No such container' in item.stderr
+    fail_msg: >-
+      Unable to inspect Containerlab GUI container {{ item.item }}.
+  loop: "{{ containerlab_gui_remove_inspect.results | default([]) }}"
+  loop_control:
+    label: "{{ item.item }}"
+  when: _containerlab_gui_effective_action == 'absent'
+
+- name: Refuse to remove unmanaged Containerlab GUI containers
+  ansible.builtin.assert:
+    that:
+      - item.rc != 0 or item.stdout | trim == 'true'
+    fail_msg: >-
+      Container {{ item.item }} exists but is not managed by HybridOps.
+  loop: "{{ containerlab_gui_remove_inspect.results | default([]) }}"
+  loop_control:
+    label: "{{ item.item }}"
+  when: _containerlab_gui_effective_action == 'absent'
 
 - name: Remove managed Containerlab GUI containers
   ansible.builtin.command:
@@ -47,9 +107,10 @@
       - rm
       - --force
       - "{{ item }}"
-  loop:
-    - "{{ containerlab_gui_web_name }}"
-    - "{{ containerlab_gui_api_name }}"
+  loop: >-
+    {{ containerlab_gui_remove_inspect.results | default([])
+       | selectattr('rc', 'equalto', 0)
+       | map(attribute='item') | list }}
   register: containerlab_gui_remove
   changed_when: containerlab_gui_remove.rc == 0
   failed_when:
@@ -143,14 +204,6 @@
             match('^[0-9]{1,3}(\.[0-9]{1,3}){3}$')
         fail_msg: "Docker bridge gateway is unavailable."
 
-    - name: Read Containerlab binary path
-      ansible.builtin.command:
-        argv:
-          - which
-          - containerlab
-      register: containerlab_gui_binary
-      changed_when: false
-
     - name: Read or create API signing secret
       ansible.builtin.shell: |
         set -eu
@@ -174,11 +227,16 @@
             'api_image': containerlab_gui_api_image,
             'api_port': containerlab_gui_api_port | int,
             'api_host': containerlab_gui_bridge.stdout | trim,
+            'api_user_group': containerlab_gui_api_user_group,
             'labs_dir': containerlab_gui_labs_dir,
             'operator': containerlab_gui_operator_user,
+            'state_dir': containerlab_gui_state_dir,
+            'superuser_group': containerlab_gui_api_superuser_group,
+            'jwt_secret_sha256': containerlab_gui_jwt.stdout | trim | hash('sha256'),
             'web_image': containerlab_gui_web_image,
             'web_port': containerlab_gui_web_port | int
           } | to_json | hash('sha256') }}
+      no_log: true
 
     - name: Inspect managed Containerlab GUI containers
       ansible.builtin.command:
@@ -186,7 +244,10 @@
           - docker
           - inspect
           - --format
-          - "{{ '{{index .Config.Labels \"io.hybridops.config\"}}|{{.State.Running}}' }}"
+          - >-
+            {{ '{{index .Config.Labels "io.hybridops.managed"}}|'
+               ~ '{{index .Config.Labels "io.hybridops.config"}}|'
+               ~ '{{.State.Running}}' }}
           - "{{ item }}"
       loop:
         - "{{ containerlab_gui_api_name }}"
@@ -194,6 +255,29 @@
       register: containerlab_gui_inspect
       changed_when: false
       failed_when: false
+
+    - name: Verify Containerlab GUI containers can be inspected before replacement
+      ansible.builtin.assert:
+        that:
+          - >-
+            item.rc == 0 or
+            'No such object' in item.stderr or
+            'No such container' in item.stderr
+        fail_msg: >-
+          Unable to inspect Containerlab GUI container {{ item.item }}.
+      loop: "{{ containerlab_gui_inspect.results }}"
+      loop_control:
+        label: "{{ item.item }}"
+
+    - name: Refuse to replace unmanaged Containerlab GUI containers
+      ansible.builtin.assert:
+        that:
+          - item.rc != 0 or item.stdout.split('|')[0] == 'true'
+        fail_msg: >-
+          Container {{ item.item }} exists but is not managed by HybridOps.
+      loop: "{{ containerlab_gui_inspect.results }}"
+      loop_control:
+        label: "{{ item.item }}"
 
     - name: Remove stale Containerlab GUI containers
       ansible.builtin.command:
@@ -209,7 +293,7 @@
         - item.rc == 0
         - >-
           item.stdout | trim !=
-          (containerlab_gui_config_identity ~ '|true')
+          ('true|' ~ containerlab_gui_config_identity ~ '|true')
       changed_when: true
 
     - name: Reinspect managed Containerlab GUI containers
@@ -237,6 +321,7 @@
         - "{{ containerlab_gui_api_image }}"
         - "{{ containerlab_gui_web_image }}"
       register: containerlab_gui_pull
+      changed_when: "'Downloaded newer image' in containerlab_gui_pull.stdout"
       when: >-
         containerlab_gui_ready.results
         | selectattr('rc', 'ne', 0)
@@ -281,7 +366,7 @@
           - --env
           - TLS_ENABLE=true
           - --env
-          - "CLAB_SHARED_LABS_DIR={{ containerlab_gui_labs_dir }}"
+          - "CLAB_LABS_ROOT={{ containerlab_gui_labs_dir }}"
           - --volume
           - /var/run/docker.sock:/var/run/docker.sock
           - --volume
@@ -300,8 +385,6 @@
           - /home:/home
           - --volume
           - "{{ containerlab_gui_labs_dir }}:{{ containerlab_gui_labs_dir }}"
-          - --volume
-          - "{{ containerlab_gui_binary.stdout | trim }}:/usr/bin/containerlab:ro"
           - "{{ containerlab_gui_api_image }}"
       no_log: true
       when: containerlab_gui_ready.results[0].rc != 0

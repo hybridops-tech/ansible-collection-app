@@ -1,0 +1,111 @@
+---
+- name: Verify Containerlab GUI removal ownership
+  hosts: localhost
+  connection: local
+  become: false
+  gather_facts: false
+
+  vars:
+    test_root: /tmp/hybridops-containerlab-gui-removal-test
+    containerlab_gui_action: absent
+    containerlab_gui_operator_user: operator
+    containerlab_gui_manage_operator_password: true
+    containerlab_gui_operator_password: ""
+    containerlab_gui_operator_password_env: ""
+
+  environment:
+    PATH: "{{ test_root }}/bin:{{ lookup('env', 'PATH') }}"
+
+  tasks:
+    - name: Create test command directory
+      ansible.builtin.file:
+        path: "{{ test_root }}/bin"
+        state: directory
+        mode: "0700"
+
+    - name: Install test Docker command
+      ansible.builtin.copy:
+        dest: "{{ test_root }}/bin/docker"
+        mode: "0700"
+        content: |
+          #!/bin/sh
+          set -eu
+          action="${1:-}"
+          name=""
+          for argument in "$@"; do
+            name="$argument"
+          done
+          case "$action:$name" in
+            inspect:*missing*)
+              printf '%s\n' "Error: No such object: $name" >&2
+              exit 1
+              ;;
+            inspect:*unmanaged*)
+              printf '%s\n' false
+              ;;
+            inspect:*managed*)
+              printf '%s\n' true
+              ;;
+            rm:*)
+              printf '%s\n' "$name" >> "{{ test_root }}/removed"
+              ;;
+            *)
+              exit 2
+              ;;
+          esac
+
+    - name: Accept absent managed containers
+      ansible.builtin.include_role:
+        name: hybridops.app.containerlab_gui
+      vars:
+        containerlab_gui_api_name: missing-api
+        containerlab_gui_web_name: missing-web
+
+    - name: Reset unmanaged-container result
+      ansible.builtin.set_fact:
+        containerlab_gui_unmanaged_refused: false
+
+    - name: Exercise unmanaged-container boundary
+      block:
+        - name: Attempt unmanaged Containerlab GUI removal
+          ansible.builtin.include_role:
+            name: hybridops.app.containerlab_gui
+          vars:
+            containerlab_gui_api_name: unmanaged-api
+            containerlab_gui_web_name: unmanaged-web
+      rescue:
+        - name: Record unmanaged-container refusal
+          ansible.builtin.set_fact:
+            containerlab_gui_unmanaged_refused: >-
+              {{
+                ansible_failed_task.name ==
+                'Refuse to remove unmanaged Containerlab GUI containers'
+              }}
+
+    - name: Require unmanaged-container refusal
+      ansible.builtin.assert:
+        that:
+          - containerlab_gui_unmanaged_refused | bool
+
+    - name: Remove owned Containerlab GUI containers
+      ansible.builtin.include_role:
+        name: hybridops.app.containerlab_gui
+      vars:
+        containerlab_gui_api_name: managed-api
+        containerlab_gui_web_name: managed-web
+
+    - name: Read removed Containerlab GUI containers
+      ansible.builtin.slurp:
+        src: "{{ test_root }}/removed"
+      register: containerlab_gui_removed
+
+    - name: Require both owned containers to be removed
+      ansible.builtin.assert:
+        that:
+          - "'managed-api' in (containerlab_gui_removed.content | b64decode)"
+          - "'managed-web' in (containerlab_gui_removed.content | b64decode)"
+
+    - name: Remove test workspace
+      ansible.builtin.file:
+        path: "{{ test_root }}"
+        state: absent

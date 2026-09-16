@@ -2,8 +2,9 @@
 
 Runs the official Containerlab API server and web GUI on the Linux host that
 owns the container runtime and lab files. The web endpoint is published only on
-host loopback. The API endpoint is bound to the Docker bridge for access by the
-web container.
+host loopback. The authenticated API follows Containerlab's host-network model;
+the web container reaches it through the Docker bridge. Labs are stored below
+`containerlab_gui_labs_dir/<operator-user>/`.
 
 The login user must already exist on the host. The role grants that user API
 access. Password management is opt-in.
