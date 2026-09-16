@@ -20,4 +20,16 @@ containerlab_lab_snapshot_node_filter: ""
 containerlab_lab_snapshot_timeout: 5m
 containerlab_lab_required_images: []
 containerlab_lab_pull_missing_images: false
+containerlab_lab_local_image_archives: []
+containerlab_lab_image_cache_dir: /var/cache/hybridops/containerlab/images
+# Standard IOL-XE binary and OCI archive names are detected in this
+# controller-side directory. CML image-definition YAML remains supported.
+containerlab_lab_local_image_dir: ""
+containerlab_lab_local_image_dir_authorised_use: false
+containerlab_lab_local_image_builds: []
+containerlab_lab_image_build_root: /var/cache/hybridops/containerlab/builds
+containerlab_lab_image_build_timeout_s: 3600
+containerlab_lab_image_build_poll_s: 15
+containerlab_lab_vrnetlab_repository: https://github.com/srl-labs/vrnetlab.git
+containerlab_lab_vrnetlab_revision: 3a34fa63d73843c871f248e2df2ffa5c038183ce
 containerlab_lab_disable_version_check: true

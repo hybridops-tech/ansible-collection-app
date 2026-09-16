@@ -1,0 +1,41 @@
+---
+- name: Validate local image discovery declaration
+  ansible.builtin.assert:
+    that:
+      - containerlab_lab_local_image_dir | string is match('^/')
+      - containerlab_lab_local_image_dir_authorised_use is boolean
+      - containerlab_lab_local_image_dir_authorised_use | bool
+    fail_msg: >-
+      Local image discovery requires an absolute controller directory and
+      containerlab_lab_local_image_dir_authorised_use=true.
+  delegate_to: localhost
+  become: false
+
+- name: Discover local IOL image sources
+  ansible.builtin.command:
+    argv:
+      - "{{ ansible_playbook_python }}"
+      - >-
+        {{ role_path | default(playbook_dir ~ '/..')
+           }}/files/discover_iol_sources.py
+      - "{{ containerlab_lab_local_image_dir }}"
+  register: containerlab_lab_local_image_discovery
+  changed_when: false
+  failed_when: false
+  delegate_to: localhost
+  become: false
+
+- name: Verify local IOL image discovery
+  ansible.builtin.assert:
+    that:
+      - containerlab_lab_local_image_discovery.rc == 0
+    fail_msg: >-
+      Local IOL image discovery failed: {{
+        containerlab_lab_local_image_discovery.stderr | trim }}
+  delegate_to: localhost
+  become: false
+
+- name: Record discovered local IOL image sources
+  ansible.builtin.set_fact:
+    containerlab_lab_discovered_image_builds: >-
+      {{ containerlab_lab_local_image_discovery.stdout | from_json }}

@@ -1,0 +1,122 @@
+---
+- name: Validate local image archive declaration
+  ansible.builtin.assert:
+    that:
+      - containerlab_lab_local_image_archive is mapping
+      - >-
+        containerlab_lab_local_image_archive.path | default('') | string | trim
+        | length > 0
+      - >-
+        containerlab_lab_local_image_archive.path | default('') | string
+        is match('^/')
+      - >-
+        containerlab_lab_local_image_archive.image | default('') | string | trim
+        | length > 0
+      - >-
+        containerlab_lab_local_image_archive.sha256 | default('') | string
+        | length == 0 or
+        containerlab_lab_local_image_archive.sha256 | string
+        is match('^[0-9a-f]{64}$')
+    fail_msg: >-
+      Each local Containerlab image archive requires an absolute controller
+      path, an expected image reference, and an optional SHA-256 digest.
+  delegate_to: localhost
+  become: false
+
+- name: Inspect expected Containerlab image
+  ansible.builtin.command:
+    argv:
+      - docker
+      - image
+      - inspect
+      - "{{ containerlab_lab_local_image_archive.image }}"
+  register: containerlab_lab_local_image_initial
+  changed_when: false
+  failed_when: false
+
+- name: Inspect local image archive
+  ansible.builtin.stat:
+    path: "{{ containerlab_lab_local_image_archive.path }}"
+    checksum_algorithm: sha256
+  register: containerlab_lab_local_image_archive_state
+  delegate_to: localhost
+  become: false
+  when: containerlab_lab_local_image_initial.rc != 0
+
+- name: Verify local image archive
+  ansible.builtin.assert:
+    that:
+      - containerlab_lab_local_image_archive_state.stat.exists
+      - containerlab_lab_local_image_archive_state.stat.isreg
+      - >-
+        containerlab_lab_local_image_archive.sha256 | default('') | length == 0 or
+        containerlab_lab_local_image_archive_state.stat.checksum ==
+        containerlab_lab_local_image_archive.sha256
+    fail_msg: >-
+      Local Containerlab image archive is missing, is not a regular file, or
+      does not match its declared SHA-256 digest.
+  delegate_to: localhost
+  become: false
+  when: containerlab_lab_local_image_initial.rc != 0
+
+- name: Load missing Containerlab image from local archive
+  when: containerlab_lab_local_image_initial.rc != 0
+  block:
+    - name: Stage local Containerlab image archive
+      ansible.builtin.copy:
+        src: "{{ containerlab_lab_local_image_archive.path }}"
+        dest: >-
+          {{ containerlab_lab_image_cache_dir }}/{{
+             containerlab_lab_local_image_archive_state.stat.checksum }}.tar
+        owner: root
+        group: root
+        mode: "0600"
+
+    - name: Load local Containerlab image archive
+      ansible.builtin.command:
+        argv:
+          - docker
+          - image
+          - load
+          - --input
+          - >-
+            {{ containerlab_lab_image_cache_dir }}/{{
+               containerlab_lab_local_image_archive_state.stat.checksum }}.tar
+      changed_when: true
+
+  always:
+    - name: Remove staged local Containerlab image archive
+      ansible.builtin.file:
+        path: >-
+          {{ containerlab_lab_image_cache_dir }}/{{
+             containerlab_lab_local_image_archive_state.stat.checksum }}.tar
+        state: absent
+
+- name: Verify expected Containerlab image identity
+  ansible.builtin.command:
+    argv:
+      - docker
+      - image
+      - inspect
+      - --format
+      - "{{ '{{.Id}}' }}"
+      - "{{ containerlab_lab_local_image_archive.image }}"
+  register: containerlab_lab_local_image_final
+  changed_when: false
+
+- name: Record local Containerlab image identity
+  ansible.builtin.set_fact:
+    containerlab_lab_local_image_results: >-
+      {{
+        containerlab_lab_local_image_results | default([])
+        + [{
+          'image': containerlab_lab_local_image_archive.image,
+          'image_id': containerlab_lab_local_image_final.stdout | trim,
+          'archive_sha256': (
+            containerlab_lab_local_image_archive_state.stat.checksum
+            if containerlab_lab_local_image_initial.rc != 0
+            else containerlab_lab_local_image_archive.sha256 | default('')
+          ),
+          'loaded': containerlab_lab_local_image_initial.rc != 0
+        }]
+      }}

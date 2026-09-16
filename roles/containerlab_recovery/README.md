@@ -17,7 +17,11 @@ retained archive is fully read, checked for unsafe members and matched against
 the host-side checksum. `containerlab_recovery_result.safe_for_host_destroy` is
 set only after those checks pass.
 
-Generated lab data is not copied by default. If that directory is required, set `containerlab_recovery_include_lab_dir` and provide `containerlab_recovery_lab_dir` explicitly. Additional paths can also be listed.
+Generated lab data is not copied by default. Set
+`containerlab_recovery_include_lab_dir` to retain it. The role resolves the
+active lab directory from native inspection metadata;
+`containerlab_recovery_lab_dir` remains available as an explicit source
+override. Additional paths can also be listed.
 
 ## Import
 

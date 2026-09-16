@@ -106,6 +106,99 @@ jobs:
           printf '  %s\n' "${LINT_TARGETS[@]}"
           ansible-lint -c .config/linters/ansible-lint.yml "${LINT_TARGETS[@]}"
 
+      - name: Verify Containerlab recovery export and import
+        run: ansible-playbook roles/containerlab_recovery/tests/smoke.yml
+
+      - name: Verify local Containerlab image loading
+        shell: bash
+        run: |
+          set -euo pipefail
+          test_root="${RUNNER_TEMP}/containerlab-image-test"
+          mkdir -p "${test_root}/rootfs"
+          printf '%s\n' 'hybridops-containerlab-image-test' > "${test_root}/rootfs/proof"
+          tar -C "${test_root}/rootfs" -cf "${test_root}/rootfs.tar" .
+          docker import "${test_root}/rootfs.tar" hybridops/containerlab-archive-test:1
+          docker save --output "${test_root}/image.tar" hybridops/containerlab-archive-test:1
+          docker image rm hybridops/containerlab-archive-test:1
+          HYOPS_TEST_IMAGE_ARCHIVE="${test_root}/image.tar" \
+            ansible-playbook roles/containerlab_lab/tests/local-image-archive.yml
+          docker image inspect hybridops/containerlab-archive-test:1 >/dev/null
+          docker image rm hybridops/containerlab-archive-test:1
+
+      - name: Verify local Containerlab image build
+        shell: bash
+        run: |
+          set -euo pipefail
+          test_root="${RUNNER_TEMP}/containerlab-image-build-test"
+          mkdir -p "${test_root}"
+          printf '%s\n' 'int main(void) { return 0; }' > "${test_root}/iol-test.c"
+          cc -O2 -o "${test_root}/iol-test.bin" "${test_root}/iol-test.c"
+          mkdir -p "${test_root}/discovery"
+          cp "${test_root}/iol-test.bin" \
+            "${test_root}/discovery/x86_64_crb_linux-adventerprisek9-ms"
+          cp "${test_root}/iol-test.bin" \
+            "${test_root}/discovery/x86_64_crb_linux_l2-adventerprisek9-ms"
+          printf '%s\n' \
+            'id: iol-xe-99-99' \
+            'node_definition_id: iol-xe' \
+            'disk_image: x86_64_crb_linux-adventerprisek9-ms' \
+            > "${test_root}/discovery/iol-xe-99-99.yaml"
+          printf '%s\n' \
+            'id: ioll2-xe-99-99' \
+            'node_definition_id: ioll2-xe' \
+            'disk_image: x86_64_crb_linux_l2-adventerprisek9-ms' \
+            > "${test_root}/discovery/ioll2-xe-99-99.yaml"
+          HYOPS_TEST_IOL_DIR="${test_root}/discovery" \
+            ansible-playbook roles/containerlab_lab/tests/local-image-discovery.yml
+
+          rm "${test_root}/discovery/iol-xe-99-99.yaml" \
+            "${test_root}/discovery/ioll2-xe-99-99.yaml"
+          printf '%s\n' \
+            'const char *version = "B17.98.1";' \
+            'int main(void) { return version[0]; }' \
+            > "${test_root}/iol-versioned.c"
+          cc -O2 -o "${test_root}/iol-versioned.bin" \
+            "${test_root}/iol-versioned.c"
+          cp "${test_root}/iol-versioned.bin" \
+            "${test_root}/discovery/x86_64_crb_linux-adventerprisek9-ms"
+          cp "${test_root}/iol-versioned.bin" \
+            "${test_root}/discovery/x86_64_crb_linux_l2-adventerprisek9-ms"
+          HYOPS_TEST_IOL_DIR="${test_root}/discovery" \
+            HYOPS_TEST_IOL_VERSION="17.98.1" \
+            ansible-playbook roles/containerlab_lab/tests/local-image-discovery.yml
+
+          HYOPS_TEST_IOL_SOURCE="${test_root}/iol-test.bin" \
+            ansible-playbook roles/containerlab_lab/tests/local-image-build.yml
+          docker image inspect vrnetlab/cisco_iol:99.99 >/dev/null
+          docker image rm vrnetlab/cisco_iol:99.99
+
+          cc -O2 -o "${test_root}/iol-truncated.bin" "${test_root}/iol-test.c"
+          truncate -s 128 "${test_root}/iol-truncated.bin"
+          if HYOPS_TEST_IOL_SOURCE="${test_root}/iol-truncated.bin" \
+            HYOPS_TEST_IOL_VERSION="99.98" \
+            ansible-playbook roles/containerlab_lab/tests/local-image-build.yml \
+            >"${test_root}/truncated.log" 2>&1; then
+            echo "truncated IOL binary was accepted"
+            exit 1
+          fi
+          grep -q "Verify local IOL binary structure" "${test_root}/truncated.log"
+
+          mkdir -p "${test_root}/oci/blobs/sha256" "${test_root}/layer"
+          cc -O2 -o "${test_root}/layer/test.iol" "${test_root}/iol-test.c"
+          tar -C "${test_root}/layer" -cf "${test_root}/layer.tar" test.iol
+          layer_sha="$(sha256sum "${test_root}/layer.tar" | awk '{print $1}')"
+          cp "${test_root}/layer.tar" "${test_root}/oci/blobs/sha256/${layer_sha}"
+          printf '{"Layers":["blobs/sha256/%s"]}\n' "${layer_sha}" \
+            >"${test_root}/oci/manifest.json"
+          tar -C "${test_root}/oci" -czf "${test_root}/iol-xe-99-97.tar.gz" \
+            manifest.json blobs
+          HYOPS_TEST_IOL_SOURCE="${test_root}/iol-xe-99-97.tar.gz" \
+            HYOPS_TEST_IOL_VERSION="99.97" \
+            HYOPS_TEST_IOL_FORMAT="oci_archive" \
+            ansible-playbook roles/containerlab_lab/tests/local-image-build.yml
+          docker image inspect vrnetlab/cisco_iol:99.97 >/dev/null
+          docker image rm vrnetlab/cisco_iol:99.97
+
       - name: Build collection (sanity)
         run: |
           ansible-galaxy collection build --force

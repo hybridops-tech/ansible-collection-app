@@ -1,0 +1,62 @@
+---
+- name: Verify local Containerlab image build handling
+  hosts: localhost
+  connection: local
+  become: true
+  gather_facts: false
+
+  vars:
+    containerlab_lab_image_build_root: /var/cache/hybridops/containerlab-build-test
+    containerlab_lab_vrnetlab_repository: https://github.com/srl-labs/vrnetlab.git
+    containerlab_lab_vrnetlab_revision: 3a34fa63d73843c871f248e2df2ffa5c038183ce
+    containerlab_lab_local_image_build:
+      kind: cisco_iol
+      source: "{{ lookup('env', 'HYOPS_TEST_IOL_SOURCE') }}"
+      version: "{{ lookup('env', 'HYOPS_TEST_IOL_VERSION') | default('99.99', true) }}"
+      type: "{{ lookup('env', 'HYOPS_TEST_IOL_TYPE') | default('l3', true) }}"
+      format: "{{ lookup('env', 'HYOPS_TEST_IOL_FORMAT') | default('binary', true) }}"
+      authorised_use: true
+
+  tasks:
+    - name: Build absent local image
+      ansible.builtin.include_tasks: ../tasks/local-image-build.yml
+
+    - name: Verify first local image build
+      ansible.builtin.assert:
+        that:
+          - containerlab_lab_local_image_build_results | length == 1
+          - containerlab_lab_local_image_build_results[0].built | bool
+          - >-
+            containerlab_lab_local_image_build_results[0].image ==
+            'vrnetlab/cisco_iol:' ~
+            ('L2-' if containerlab_lab_local_image_build.type == 'l2' else '') ~
+            containerlab_lab_local_image_build.version
+          - >-
+            containerlab_lab_local_image_build_results[0].image_id
+            is match('^sha256:[0-9a-f]{64}$')
+          - >-
+            containerlab_lab_local_image_build_results[0].builder_revision ==
+            containerlab_lab_vrnetlab_revision
+
+    - name: Remove controller build source after first build
+      ansible.builtin.file:
+        path: "{{ containerlab_lab_local_image_build.source }}"
+        state: absent
+      delegate_to: localhost
+      become: false
+
+    - name: Reset local image build result
+      ansible.builtin.set_fact:
+        containerlab_lab_local_image_build_results: []
+
+    - name: Recheck existing image without build source
+      ansible.builtin.include_tasks: ../tasks/local-image-build.yml
+
+    - name: Verify existing image was not rebuilt
+      ansible.builtin.assert:
+        that:
+          - containerlab_lab_local_image_build_results | length == 1
+          - not (containerlab_lab_local_image_build_results[0].built | bool)
+          - >-
+            containerlab_lab_local_image_build_results[0].image_id
+            is match('^sha256:[0-9a-f]{64}$')

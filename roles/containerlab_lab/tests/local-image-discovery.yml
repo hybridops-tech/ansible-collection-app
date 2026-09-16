@@ -1,0 +1,35 @@
+---
+- name: Verify local Containerlab image discovery
+  hosts: localhost
+  connection: local
+  become: false
+  gather_facts: false
+
+  vars:
+    containerlab_lab_local_image_dir: "{{ lookup('env', 'HYOPS_TEST_IOL_DIR') }}"
+    containerlab_lab_local_image_dir_authorised_use: true
+    containerlab_lab_test_image_version: >-
+      {{ lookup('env', 'HYOPS_TEST_IOL_VERSION') | default('99.99', true) }}
+
+  tasks:
+    - name: Discover local image sources
+      ansible.builtin.include_tasks: ../tasks/local-image-discovery.yml
+
+    - name: Verify discovered image identities
+      ansible.builtin.assert:
+        that:
+          - containerlab_lab_discovered_image_builds | length == 2
+          - >-
+            containerlab_lab_discovered_image_builds
+            | selectattr('type', 'equalto', 'l3')
+            | selectattr('version', 'equalto', containerlab_lab_test_image_version)
+            | list | length == 1
+          - >-
+            containerlab_lab_discovered_image_builds
+            | selectattr('type', 'equalto', 'l2')
+            | selectattr('version', 'equalto', containerlab_lab_test_image_version)
+            | list | length == 1
+          - >-
+            containerlab_lab_discovered_image_builds
+            | selectattr('sha256', 'match', '^[0-9a-f]{64}$')
+            | list | length == 2

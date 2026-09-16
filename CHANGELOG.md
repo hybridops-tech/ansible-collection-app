@@ -7,6 +7,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.12] - 2026-09-16
+
+### Added
+
+- Added checksum-aware loading of operator-supplied Containerlab image
+  archives on fresh managed hosts.
+- Added managed-host builds for operator-supplied Cisco IOL-XE binaries and
+  supported OCI archives using a pinned vrnetlab revision, with structural
+  validation before build.
+- Added standard CML directory discovery for IOL-XE image type, version,
+  checksum, build tag and post-build verification.
+
+### Fixed
+
+- Reset and revalidated SSH after Docker installation on fresh Containerlab
+  hosts.
+- Preserved and restored the inspected Containerlab native lab directory so
+  Cisco IOL NVRAM survives disposable-host reconstruction.
+
 ## [0.1.11] - 2026-09-15
 
 ### Fixed
