@@ -4,6 +4,20 @@
     _containerlab_gui_effective_action: >-
       {{ _containerlab_gui_action | default(containerlab_gui_action, true) }}
 
+- name: Resolve managed Containerlab GUI password
+  ansible.builtin.set_fact:
+    _containerlab_gui_effective_password: >-
+      {{
+        containerlab_gui_operator_password
+        if containerlab_gui_operator_password | length > 0
+        else (
+          lookup('env', containerlab_gui_operator_password_env)
+          if containerlab_gui_operator_password_env | length > 0
+          else ''
+        )
+      }}
+  no_log: true
+
 - name: Validate Containerlab GUI inputs
   ansible.builtin.assert:
     that:
@@ -23,7 +37,7 @@
       - containerlab_gui_health_timeout_s | int > 0
       - >-
         not (containerlab_gui_manage_operator_password | bool) or
-        containerlab_gui_operator_password | length > 0
+        _containerlab_gui_effective_password | length > 0
     fail_msg: "Containerlab GUI inputs are invalid."
 
 - name: Remove managed Containerlab GUI containers
@@ -91,7 +105,7 @@
         argv:
           - chpasswd
         stdin: >-
-          {{ containerlab_gui_operator_user }}:{{ containerlab_gui_operator_password }}
+          {{ containerlab_gui_operator_user }}:{{ _containerlab_gui_effective_password }}
       no_log: true
       changed_when: true
       when: containerlab_gui_manage_operator_password | bool

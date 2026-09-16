@@ -3,6 +3,7 @@ containerlab_gui_action: present
 containerlab_gui_operator_user: "{{ ansible_user | default(ansible_user_id) }}"
 containerlab_gui_manage_operator_password: false
 containerlab_gui_operator_password: ""
+containerlab_gui_operator_password_env: ""
 containerlab_gui_labs_dir: /var/lib/hybridops/containerlab/labs
 containerlab_gui_state_dir: /var/lib/hybridops/containerlab/gui
 containerlab_gui_api_name: hyops-containerlab-api

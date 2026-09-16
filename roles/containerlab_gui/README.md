@@ -13,3 +13,10 @@ containerlab_gui_operator_user: opsadmin
 containerlab_gui_labs_dir: /var/lib/hybridops/containerlab/labs
 containerlab_gui_manage_operator_password: false
 ```
+
+Managed hosts can resolve the password from a declared environment variable:
+
+```yaml
+containerlab_gui_manage_operator_password: true
+containerlab_gui_operator_password_env: CONTAINERLAB_GUI_PASSWORD
+```
