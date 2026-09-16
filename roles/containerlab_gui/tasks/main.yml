@@ -24,6 +24,7 @@
       - _containerlab_gui_effective_action in ['present', 'absent']
       - containerlab_gui_operator_user | length > 0
       - containerlab_gui_operator_user is match('^[a-z_][a-z0-9_-]{0,31}$')
+      - containerlab_gui_operator_user != 'root'
       - containerlab_gui_labs_dir is match('^/')
       - containerlab_gui_state_dir is match('^/')
       - containerlab_gui_labs_dir != '/'
@@ -41,6 +42,10 @@
         )
       - containerlab_gui_api_name is match('^[A-Za-z0-9][A-Za-z0-9_.-]+$')
       - containerlab_gui_web_name is match('^[A-Za-z0-9][A-Za-z0-9_.-]+$')
+      - containerlab_gui_api_name != containerlab_gui_web_name
+      - containerlab_gui_api_user_group is match('^[a-z_][a-z0-9_-]{0,31}$')
+      - containerlab_gui_api_superuser_group is match('^[a-z_][a-z0-9_-]{0,31}$')
+      - containerlab_gui_api_user_group != containerlab_gui_api_superuser_group
       - containerlab_gui_api_image | length > 0
       - containerlab_gui_web_image | length > 0
       - containerlab_gui_api_port | int > 0
@@ -56,7 +61,7 @@
       - >-
         _containerlab_gui_effective_action == 'absent' or
         not (containerlab_gui_manage_operator_password | bool) or
-        not (_containerlab_gui_effective_password is search('[\r\n]'))
+        not (_containerlab_gui_effective_password is search('[:\r\n]'))
     fail_msg: "Containerlab GUI inputs are invalid."
 
 - name: Inspect Containerlab GUI containers before removal
