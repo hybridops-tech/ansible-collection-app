@@ -29,6 +29,8 @@
         containerlab_lab_local_image_build.sha256 | string
         is match('^[0-9a-f]{64}$')
       - containerlab_lab_image_build_root | string is match('^/')
+      - containerlab_lab_image_build_timeout_s | int >= 60
+      - containerlab_lab_image_build_poll_s | int >= 1
       - containerlab_lab_vrnetlab_repository | string | trim | length > 0
       - >-
         containerlab_lab_vrnetlab_revision | string
@@ -269,6 +271,8 @@
         chdir: "{{ containerlab_lab_local_image_build_dir }}/cisco/iol"
       environment:
         DOCKER_DEFAULT_PLATFORM: linux/amd64
+      async: "{{ containerlab_lab_image_build_timeout_s | int }}"
+      poll: "{{ containerlab_lab_image_build_poll_s | int }}"
       changed_when: true
 
   always:
@@ -304,6 +308,8 @@
         containerlab_lab_local_image_build_results | default([])
         + [{
           'image': containerlab_lab_local_image_build_ref,
+          'type': containerlab_lab_local_image_build.type | default('l3'),
+          'version': containerlab_lab_local_image_build.version,
           'image_id': (containerlab_lab_local_image_build_final.stdout | trim).split()[0],
           'source_sha256': (
             containerlab_lab_local_image_build_source_state.stat.checksum

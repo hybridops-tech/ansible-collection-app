@@ -147,6 +147,23 @@ jobs:
             > "${test_root}/discovery/ioll2-xe-99-99.yaml"
           HYOPS_TEST_IOL_DIR="${test_root}/discovery" \
             ansible-playbook roles/containerlab_lab/tests/local-image-discovery.yml
+
+          rm "${test_root}/discovery/iol-xe-99-99.yaml" \
+            "${test_root}/discovery/ioll2-xe-99-99.yaml"
+          printf '%s\n' \
+            'const char *version = "B17.98.1";' \
+            'int main(void) { return version[0]; }' \
+            > "${test_root}/iol-versioned.c"
+          cc -O2 -o "${test_root}/iol-versioned.bin" \
+            "${test_root}/iol-versioned.c"
+          cp "${test_root}/iol-versioned.bin" \
+            "${test_root}/discovery/x86_64_crb_linux-adventerprisek9-ms"
+          cp "${test_root}/iol-versioned.bin" \
+            "${test_root}/discovery/x86_64_crb_linux_l2-adventerprisek9-ms"
+          HYOPS_TEST_IOL_DIR="${test_root}/discovery" \
+            HYOPS_TEST_IOL_VERSION="17.98.1" \
+            ansible-playbook roles/containerlab_lab/tests/local-image-discovery.yml
+
           HYOPS_TEST_IOL_SOURCE="${test_root}/iol-test.bin" \
             ansible-playbook roles/containerlab_lab/tests/local-image-build.yml
           docker image inspect vrnetlab/cisco_iol:99.99 >/dev/null

@@ -120,12 +120,18 @@
   ansible.builtin.set_fact:
     containerlab_lab_discovered_image_builds: []
     containerlab_lab_local_image_build_results: []
+    containerlab_lab_command_environment:
+      CLAB_VERSION_CHECK: >-
+        {{ 'disable' if containerlab_lab_disable_version_check | bool else '' }}
+      CLAB_LABDIR_BASE: "{{ containerlab_lab_labdir_base }}"
 
 - name: Discover local Containerlab image sources
   ansible.builtin.include_tasks: local-image-discovery.yml
   when:
     - containerlab_lab_local_image_dir | length > 0
-    - _containerlab_lab_effective_action in ['deploy', 'redeploy']
+    - >-
+      not (_containerlab_lab_effective_action == 'destroy' and
+           _containerlab_lab_effective_destroy_all | bool)
 
 - name: Resolve effective local image builds
   ansible.builtin.set_fact:
@@ -134,6 +140,29 @@
         containerlab_lab_local_image_builds
         + containerlab_lab_discovered_image_builds
       }}
+
+- name: Bind uniquely discovered IOL images to the topology
+  ansible.builtin.set_fact:
+    containerlab_lab_command_environment: >-
+      {{
+        containerlab_lab_command_environment
+        | combine({
+            ('HYOPS_CONTAINERLAB_IOL_L2_IMAGE'
+             if item.type | default('l3') == 'l2'
+             else 'HYOPS_CONTAINERLAB_IOL_L3_IMAGE'):
+            'vrnetlab/cisco_iol:'
+            ~ ('L2-' if item.type | default('l3') == 'l2' else '')
+            ~ item.version
+          })
+      }}
+  loop: "{{ containerlab_lab_effective_image_builds }}"
+  loop_control:
+    label: "{{ item.type | default('l3') }} {{ item.version }}"
+  when:
+    - >-
+      containerlab_lab_effective_image_builds
+      | selectattr('type', 'equalto', item.type | default('l3'))
+      | list | length == 1
 
 - name: Build local Containerlab images
   ansible.builtin.include_tasks: local-image-build.yml
@@ -218,9 +247,7 @@
       - validate
       - -t
       - "{{ containerlab_lab_effective_topology_path }}"
-  environment:
-    CLAB_VERSION_CHECK: "{{ 'disable' if containerlab_lab_disable_version_check | bool else '' }}"
-    CLAB_LABDIR_BASE: "{{ containerlab_lab_labdir_base }}"
+  environment: "{{ containerlab_lab_command_environment }}"
   register: containerlab_lab_command
   changed_when: false
   when: _containerlab_lab_effective_action == 'validate'
@@ -231,9 +258,7 @@
       {{ ['containerlab', 'deploy', '-t', containerlab_lab_effective_topology_path]
          + (['--restore-all', containerlab_lab_restore_all_dir]
             if containerlab_lab_restore_all_dir | length > 0 else []) }}
-  environment:
-    CLAB_VERSION_CHECK: "{{ 'disable' if containerlab_lab_disable_version_check | bool else '' }}"
-    CLAB_LABDIR_BASE: "{{ containerlab_lab_labdir_base }}"
+  environment: "{{ containerlab_lab_command_environment }}"
   register: containerlab_lab_command
   changed_when: true
   when: _containerlab_lab_effective_action == 'deploy'
@@ -247,9 +272,7 @@
       - "{{ containerlab_lab_effective_topology_path }}"
       - -f
       - json
-  environment:
-    CLAB_VERSION_CHECK: "{{ 'disable' if containerlab_lab_disable_version_check | bool else '' }}"
-    CLAB_LABDIR_BASE: "{{ containerlab_lab_labdir_base }}"
+  environment: "{{ containerlab_lab_command_environment }}"
   register: containerlab_lab_command
   changed_when: false
   when: _containerlab_lab_effective_action == 'inspect'
@@ -261,9 +284,7 @@
       - destroy
       - --all
       - --yes
-  environment:
-    CLAB_VERSION_CHECK: "{{ 'disable' if containerlab_lab_disable_version_check | bool else '' }}"
-    CLAB_LABDIR_BASE: "{{ containerlab_lab_labdir_base }}"
+  environment: "{{ containerlab_lab_command_environment }}"
   register: containerlab_lab_command
   changed_when: true
   when:
@@ -275,9 +296,7 @@
     argv: >-
       {{ ['containerlab', 'destroy', '-t', containerlab_lab_effective_topology_path]
          + (['--cleanup'] if containerlab_lab_cleanup | bool else []) }}
-  environment:
-    CLAB_VERSION_CHECK: "{{ 'disable' if containerlab_lab_disable_version_check | bool else '' }}"
-    CLAB_LABDIR_BASE: "{{ containerlab_lab_labdir_base }}"
+  environment: "{{ containerlab_lab_command_environment }}"
   register: containerlab_lab_command
   changed_when: true
   when:
@@ -291,9 +310,7 @@
       - redeploy
       - -t
       - "{{ containerlab_lab_effective_topology_path }}"
-  environment:
-    CLAB_VERSION_CHECK: "{{ 'disable' if containerlab_lab_disable_version_check | bool else '' }}"
-    CLAB_LABDIR_BASE: "{{ containerlab_lab_labdir_base }}"
+  environment: "{{ containerlab_lab_command_environment }}"
   register: containerlab_lab_command
   changed_when: true
   when: _containerlab_lab_effective_action == 'redeploy'
@@ -321,9 +338,7 @@
       - "{{ containerlab_lab_effective_topology_path }}"
       - --copy
       - "{{ containerlab_lab_save_copy_dir }}"
-  environment:
-    CLAB_VERSION_CHECK: "{{ 'disable' if containerlab_lab_disable_version_check | bool else '' }}"
-    CLAB_LABDIR_BASE: "{{ containerlab_lab_labdir_base }}"
+  environment: "{{ containerlab_lab_command_environment }}"
   register: containerlab_lab_command
   changed_when: true
   when: _containerlab_lab_effective_action == 'save'
@@ -350,9 +365,7 @@
           '--timeout', containerlab_lab_snapshot_timeout, '--format', 'json']
          + (['--node-filter', containerlab_lab_snapshot_node_filter]
             if containerlab_lab_snapshot_node_filter | length > 0 else []) }}
-  environment:
-    CLAB_VERSION_CHECK: "{{ 'disable' if containerlab_lab_disable_version_check | bool else '' }}"
-    CLAB_LABDIR_BASE: "{{ containerlab_lab_labdir_base }}"
+  environment: "{{ containerlab_lab_command_environment }}"
   register: containerlab_lab_command
   changed_when: true
   when: _containerlab_lab_effective_action == 'snapshot-save'

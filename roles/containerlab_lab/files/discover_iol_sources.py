@@ -15,6 +15,12 @@ import yaml
 ARCHIVE_PATTERN = re.compile(
     r"^(?P<family>iol|ioll2)-xe-(?P<version>[0-9]+(?:-[0-9]+)+)\.tar\.gz$"
 )
+BINARY_PATTERN = re.compile(
+    r"^x86_64_crb_linux(?P<l2>_l2)?-[A-Za-z0-9][A-Za-z0-9._-]*$"
+)
+VERSION_PATTERN = re.compile(
+    rb"(?<![0-9])B?(?P<version>(?:1[0-9]|2[0-9])\.[0-9]{1,2}\.[0-9]{1,2})(?![0-9])"
+)
 DEFINITION_IDS = {
     "iol-xe": ("l3", "iol-xe-"),
     "ioll2-xe": ("l2", "ioll2-xe-"),
@@ -53,8 +59,34 @@ def discover_archives(root: Path) -> list[dict]:
     return records
 
 
-def discover_binaries(root: Path) -> list[dict]:
+def inspect_binary(path: Path) -> None:
+    with path.open("rb") as source:
+        header = source.read(20)
+    if (
+        len(header) < 20
+        or header[:4] != b"\x7fELF"
+        or header[4] != 2
+        or header[5] != 1
+        or int.from_bytes(header[18:20], "little") != 62
+    ):
+        raise ValueError(f"{path.name}: expected a 64-bit x86 ELF binary")
+
+
+def embedded_version(path: Path) -> str:
+    overlap = b""
+    with path.open("rb") as source:
+        for block in iter(lambda: source.read(8 * 1024 * 1024), b""):
+            content = overlap + block
+            match = VERSION_PATTERN.search(content)
+            if match is not None:
+                return match.group("version").decode("ascii")
+            overlap = content[-32:]
+    raise ValueError(f"{path.name}: unable to determine the embedded IOS XE version")
+
+
+def discover_binaries(root: Path) -> tuple[list[dict], set[Path]]:
     records = []
+    referenced = set()
     for definition_path in sorted((*root.glob("*.yaml"), *root.glob("*.yml"))):
         definition = yaml.safe_load(definition_path.read_text(encoding="utf-8"))
         if not isinstance(definition, dict):
@@ -88,7 +120,24 @@ def discover_binaries(root: Path) -> list[dict]:
             )
 
         version = version_text.replace("-", ".")
+        referenced.add(source.resolve())
         records.append(build_record(source, version, image_type, "binary"))
+    return records, referenced
+
+
+def discover_unmapped_binaries(root: Path, referenced: set[Path]) -> list[dict]:
+    records = []
+    for path in sorted(root.iterdir()):
+        if not path.is_file() or path.resolve() in referenced:
+            continue
+        match = BINARY_PATTERN.fullmatch(path.name)
+        if match is None:
+            continue
+        inspect_binary(path)
+        image_type = "l2" if match.group("l2") else "l3"
+        records.append(
+            build_record(path, embedded_version(path), image_type, "binary")
+        )
     return records
 
 
@@ -98,11 +147,16 @@ def discover(root: Path) -> list[dict]:
     if not root.is_dir():
         raise ValueError(f"image directory does not exist: {root}")
 
-    records = discover_archives(root) + discover_binaries(root)
+    defined_binaries, referenced = discover_binaries(root)
+    records = (
+        discover_archives(root)
+        + defined_binaries
+        + discover_unmapped_binaries(root, referenced)
+    )
     if not records:
         raise ValueError(
-            "no supported IOL-XE sources found; keep each loose CML binary with "
-            "its image-definition YAML, or use a standard iol-xe/ioll2-xe OCI archive name"
+            "no supported IOL-XE sources found; use standard x86_64_crb_linux "
+            "binary names, CML image-definition YAML, or iol-xe/ioll2-xe OCI archive names"
         )
 
     unique = {}
