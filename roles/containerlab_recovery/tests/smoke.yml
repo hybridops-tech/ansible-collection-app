@@ -26,6 +26,7 @@
       loop:
         - "{{ test_source }}"
         - "{{ test_labdirs }}"
+        - "{{ test_labdirs }}/clab-recovery-test/r1"
         - "{{ test_mock_bin }}"
 
     - name: Write test topology
@@ -37,6 +38,12 @@
           topology:
             nodes: {}
 
+    - name: Write test native node state
+      ansible.builtin.copy:
+        dest: "{{ test_labdirs }}/clab-recovery-test/r1/nvram_00001"
+        mode: "0600"
+        content: "hybridops-containerlab-recovery-test\n"
+
     - name: Install test Containerlab command
       ansible.builtin.copy:
         dest: "{{ test_mock_bin }}/containerlab"
@@ -46,7 +53,7 @@
           if [ "$1" = "version" ]; then
             printf '%s\n' '{"version":"0.78.0"}'
           elif [ "$1" = "inspect" ]; then
-            printf '%s\n' '[]'
+            printf '%s\n' '{"recovery-test":[{"lab_name":"recovery-test"}]}'
           fi
 
     - name: Export test recovery set
@@ -62,6 +69,7 @@
         containerlab_recovery_remote_root: "{{ test_remote }}"
         containerlab_recovery_labdir_base: "{{ test_labdirs }}"
         containerlab_recovery_save_configs: false
+        containerlab_recovery_include_lab_dir: true
         containerlab_recovery_image_refs:
           - ghcr.io/nokia/srlinux:latest
 
@@ -93,12 +101,21 @@
         checksum_algorithm: sha256
       register: test_restored_topology
 
+    - name: Read restored native node state
+      ansible.builtin.slurp:
+        src: "{{ test_labdirs }}/clab-recovery-test/r1/nvram_00001"
+      register: test_restored_native_state
+
     - name: Require verified recovery import
       ansible.builtin.assert:
         that:
           - containerlab_recovery_result.action == 'import'
           - containerlab_recovery_result.mode == 'rebuild'
           - test_restored_topology.stat.isreg
+          - containerlab_recovery_result.lab_directory_restored | bool
+          - >-
+            test_restored_native_state.content | b64decode ==
+            'hybridops-containerlab-recovery-test\n'
           - containerlab_recovery_result.image_refs == ['ghcr.io/nokia/srlinux:latest']
 
   post_tasks:

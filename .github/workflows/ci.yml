@@ -106,6 +106,9 @@ jobs:
           printf '  %s\n' "${LINT_TARGETS[@]}"
           ansible-lint -c .config/linters/ansible-lint.yml "${LINT_TARGETS[@]}"
 
+      - name: Verify Containerlab recovery export and import
+        run: ansible-playbook roles/containerlab_recovery/tests/smoke.yml
+
       - name: Verify local Containerlab image loading
         shell: bash
         run: |

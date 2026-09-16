@@ -186,6 +186,58 @@
         mode: "0640"
       when: containerlab_recovery_inspect.rc == 0
 
+    - name: Resolve inspected Containerlab lab identity
+      ansible.builtin.set_fact:
+        containerlab_recovery_inspect_data: >-
+          {{ containerlab_recovery_inspect.stdout | from_json }}
+      when: containerlab_recovery_include_lab_dir | bool
+
+    - name: Validate inspected Containerlab lab identity
+      ansible.builtin.assert:
+        that:
+          - containerlab_recovery_inspect.rc == 0
+          - containerlab_recovery_inspect_data is mapping
+          - containerlab_recovery_inspect_data | length == 1
+          - >-
+            (containerlab_recovery_inspect_data.keys() | list | first)
+            is match('^[A-Za-z0-9_.-]+$')
+        fail_msg: >-
+          Containerlab must report exactly one safe lab identity before native
+          generated state can be retained.
+      when: containerlab_recovery_include_lab_dir | bool
+
+    - name: Resolve native Containerlab lab directory
+      ansible.builtin.set_fact:
+        containerlab_recovery_effective_lab_name: >-
+          {{ containerlab_recovery_inspect_data.keys() | list | first }}
+        containerlab_recovery_effective_lab_dir: >-
+          {{
+            containerlab_recovery_lab_dir
+            if containerlab_recovery_lab_dir | length > 0
+            else (
+              containerlab_recovery_labdir_base | regex_replace('/+$', '')
+              ~ '/clab-'
+              ~ (containerlab_recovery_inspect_data.keys() | list | first)
+            )
+          }}
+      when: containerlab_recovery_include_lab_dir | bool
+
+    - name: Read native Containerlab lab directory state
+      ansible.builtin.stat:
+        path: "{{ containerlab_recovery_effective_lab_dir }}"
+      register: containerlab_recovery_lab_dir_stat
+      when: containerlab_recovery_include_lab_dir | bool
+
+    - name: Verify native Containerlab lab directory
+      ansible.builtin.assert:
+        that:
+          - containerlab_recovery_lab_dir_stat.stat.exists
+          - containerlab_recovery_lab_dir_stat.stat.isdir
+        fail_msg: >-
+          Containerlab generated state is unavailable at
+          {{ containerlab_recovery_effective_lab_dir }}.
+      when: containerlab_recovery_include_lab_dir | bool
+
     - name: Create saved-configuration directory
       ansible.builtin.file:
         path: "{{ containerlab_recovery_bundle_source_root }}/startup-configs"
@@ -238,18 +290,9 @@
       changed_when: true
       when: containerlab_recovery_mode == 'snapshot'
 
-    - name: Validate explicit lab-directory request
-      ansible.builtin.assert:
-        that:
-          - containerlab_recovery_lab_dir | length > 0
-        fail_msg: >-
-          Set containerlab_recovery_lab_dir explicitly when requesting lab-directory retention;
-          the role will not guess Containerlab internal ownership paths.
-      when: containerlab_recovery_include_lab_dir | bool
-
-    - name: Preserve explicitly declared native lab directory
+    - name: Preserve native Containerlab lab directory
       ansible.builtin.copy:
-        src: "{{ containerlab_recovery_lab_dir }}"
+        src: "{{ containerlab_recovery_effective_lab_dir | regex_replace('/+$', '') }}/"
         dest: "{{ containerlab_recovery_bundle_root }}/lab-directory/"
         remote_src: true
         mode: preserve
@@ -292,6 +335,11 @@
             'native_config_save_rc': (containerlab_recovery_save.rc | default(None)),
             'native_snapshots_requested': (containerlab_recovery_mode == 'snapshot'),
             'lab_directory_included': (containerlab_recovery_include_lab_dir | bool),
+            'lab_directory_name': (
+              ('clab-' ~ containerlab_recovery_effective_lab_name)
+              if containerlab_recovery_include_lab_dir | bool
+              else ''
+            ),
             'additional_paths_count': (containerlab_recovery_additional_paths | length)
           } | to_nice_json }}
 
@@ -534,6 +582,23 @@
           - containerlab_recovery_import_manifest_data.topology_sha256 is match('^[0-9a-f]{64}$')
           - containerlab_recovery_import_manifest_data.source_root_included is boolean
           - containerlab_recovery_import_manifest_data.labdir_base | length > 0
+          - >-
+            (containerlab_recovery_import_manifest_data.lab_directory_included
+             | default(false)) is boolean
+          - >-
+            not (containerlab_recovery_import_manifest_data.lab_directory_included
+                 | default(false))
+            or (
+              containerlab_recovery_import_manifest_data.lab_directory_name
+              is match('^clab-[A-Za-z0-9_.-]+$')
+            )
+          - >-
+            not (containerlab_recovery_import_manifest_data.lab_directory_included
+                 | default(false))
+            or (
+              containerlab_recovery_import_manifest_data.labdir_base
+              == containerlab_recovery_labdir_base
+            )
         fail_msg: "Restored Containerlab recovery manifest is invalid."
 
     - name: Resolve restored Containerlab source and topology paths
@@ -577,6 +642,58 @@
         path: "{{ containerlab_recovery_import_bundle_root }}/snapshots"
       register: containerlab_recovery_import_snapshots
 
+    - name: Read restored native lab directory
+      ansible.builtin.stat:
+        path: "{{ containerlab_recovery_import_bundle_root }}/lab-directory"
+      register: containerlab_recovery_import_lab_dir
+
+    - name: Verify declared native lab directory is present
+      ansible.builtin.assert:
+        that:
+          - containerlab_recovery_import_lab_dir.stat.exists
+          - containerlab_recovery_import_lab_dir.stat.isdir
+        fail_msg: >-
+          The recovery manifest declares native Containerlab state, but the
+          retained lab directory is absent.
+      when: containerlab_recovery_import_manifest_data.lab_directory_included | default(false)
+
+    - name: Remove stale native lab directory before restore
+      ansible.builtin.file:
+        path: >-
+          {{
+            containerlab_recovery_labdir_base | regex_replace('/+$', '')
+            ~ '/'
+            ~ containerlab_recovery_import_manifest_data.lab_directory_name
+          }}
+        state: absent
+      when: containerlab_recovery_import_manifest_data.lab_directory_included | default(false)
+
+    - name: Recreate native lab directory for restore
+      ansible.builtin.file:
+        path: >-
+          {{
+            containerlab_recovery_labdir_base | regex_replace('/+$', '')
+            ~ '/'
+            ~ containerlab_recovery_import_manifest_data.lab_directory_name
+          }}
+        state: directory
+        mode: "0750"
+      when: containerlab_recovery_import_manifest_data.lab_directory_included | default(false)
+
+    - name: Restore native Containerlab lab directory
+      ansible.builtin.copy:
+        src: "{{ containerlab_recovery_import_bundle_root }}/lab-directory/"
+        dest: >-
+          {{
+            containerlab_recovery_labdir_base | regex_replace('/+$', '')
+            ~ '/'
+            ~ containerlab_recovery_import_manifest_data.lab_directory_name
+            ~ '/'
+          }}
+        remote_src: true
+        mode: preserve
+      when: containerlab_recovery_import_manifest_data.lab_directory_included | default(false)
+
     - name: Publish recovery import result
       ansible.builtin.set_fact:
         containerlab_recovery_result:
@@ -592,6 +709,16 @@
                  and containerlab_recovery_import_snapshots.stat.isdir
                )
                else '' }}
+          lab_directory_restored: >-
+            {{ containerlab_recovery_import_manifest_data.lab_directory_included | default(false) }}
+          lab_directory_path: >-
+            {{
+              containerlab_recovery_labdir_base | regex_replace('/+$', '')
+              ~ '/'
+              ~ containerlab_recovery_import_manifest_data.lab_directory_name
+              if containerlab_recovery_import_manifest_data.lab_directory_included | default(false)
+              else ''
+            }}
           manifest_path: "{{ containerlab_recovery_import_manifest.files[0].path }}"
           image_refs: "{{ containerlab_recovery_import_manifest_data.image_refs | default([]) }}"
           labdir_base: >-
