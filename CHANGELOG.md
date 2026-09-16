@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Added pinned Containerlab API and web GUI components with loopback-only web
+  publication and Linux account authentication.
+
 ## [0.1.12] - 2026-09-16
 
 ### Added
