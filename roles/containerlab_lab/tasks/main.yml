@@ -25,6 +25,16 @@
       topology relative path, or the explicit dedicated-host destroy-all policy
       are required.
 
+- name: Validate Containerlab image source mode
+  ansible.builtin.assert:
+    that:
+      - >-
+        containerlab_lab_local_image_dir | length == 0 or
+        containerlab_lab_local_image_builds | length == 0
+    fail_msg: >-
+      Use either image-directory discovery or explicit local image build
+      declarations, not both.
+
 - name: Validate staged topology path is relative
   ansible.builtin.assert:
     that:
@@ -106,13 +116,42 @@
          | default(containerlab_lab_local_image_archive.path | default('invalid')) }}
   when: _containerlab_lab_effective_action in ['deploy', 'redeploy']
 
+- name: Initialise local image build state
+  ansible.builtin.set_fact:
+    containerlab_lab_discovered_image_builds: []
+    containerlab_lab_local_image_build_results: []
+
+- name: Discover local Containerlab image sources
+  ansible.builtin.include_tasks: local-image-discovery.yml
+  when:
+    - containerlab_lab_local_image_dir | length > 0
+    - _containerlab_lab_effective_action in ['deploy', 'redeploy']
+
+- name: Resolve effective local image builds
+  ansible.builtin.set_fact:
+    containerlab_lab_effective_image_builds: >-
+      {{
+        containerlab_lab_local_image_builds
+        + containerlab_lab_discovered_image_builds
+      }}
+
 - name: Build local Containerlab images
   ansible.builtin.include_tasks: local-image-build.yml
-  loop: "{{ containerlab_lab_local_image_builds }}"
+  loop: "{{ containerlab_lab_effective_image_builds }}"
   loop_control:
     loop_var: containerlab_lab_local_image_build
     label: "{{ containerlab_lab_local_image_build.version | default('invalid') }}"
   when: _containerlab_lab_effective_action in ['deploy', 'redeploy']
+
+- name: Resolve effective required images
+  ansible.builtin.set_fact:
+    containerlab_lab_effective_required_images: >-
+      {{
+        (containerlab_lab_required_images
+         + (containerlab_lab_local_image_build_results
+            | map(attribute='image') | list))
+        | unique | list
+      }}
 
 - name: Inspect required local images
   ansible.builtin.command:
@@ -121,12 +160,12 @@
       - image
       - inspect
       - "{{ item }}"
-  loop: "{{ containerlab_lab_required_images }}"
+  loop: "{{ containerlab_lab_effective_required_images }}"
   register: containerlab_lab_image_inspect_initial
   changed_when: false
   failed_when: false
   when:
-    - containerlab_lab_required_images | length > 0
+    - containerlab_lab_effective_required_images | length > 0
     - _containerlab_lab_effective_action != 'destroy'
 
 - name: Pull missing required images when allowed
@@ -148,12 +187,12 @@
       - image
       - inspect
       - "{{ item }}"
-  loop: "{{ containerlab_lab_required_images }}"
+  loop: "{{ containerlab_lab_effective_required_images }}"
   register: containerlab_lab_image_inspect_final
   changed_when: false
   failed_when: false
   when:
-    - containerlab_lab_required_images | length > 0
+    - containerlab_lab_effective_required_images | length > 0
     - _containerlab_lab_effective_action != 'destroy'
 
 - name: Verify required images are available
@@ -169,7 +208,7 @@
       not redistribute proprietary NOS images; make the referenced image
       available through the local image store or an authenticated registry.
   when:
-    - containerlab_lab_required_images | length > 0
+    - containerlab_lab_effective_required_images | length > 0
     - _containerlab_lab_effective_action != 'destroy'
 
 - name: Validate Containerlab topology natively

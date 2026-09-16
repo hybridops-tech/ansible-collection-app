@@ -130,6 +130,23 @@ jobs:
           mkdir -p "${test_root}"
           printf '%s\n' 'int main(void) { return 0; }' > "${test_root}/iol-test.c"
           cc -O2 -o "${test_root}/iol-test.bin" "${test_root}/iol-test.c"
+          mkdir -p "${test_root}/discovery"
+          cp "${test_root}/iol-test.bin" \
+            "${test_root}/discovery/x86_64_crb_linux-adventerprisek9-ms"
+          cp "${test_root}/iol-test.bin" \
+            "${test_root}/discovery/x86_64_crb_linux_l2-adventerprisek9-ms"
+          printf '%s\n' \
+            'id: iol-xe-99-99' \
+            'node_definition_id: iol-xe' \
+            'disk_image: x86_64_crb_linux-adventerprisek9-ms' \
+            > "${test_root}/discovery/iol-xe-99-99.yaml"
+          printf '%s\n' \
+            'id: ioll2-xe-99-99' \
+            'node_definition_id: ioll2-xe' \
+            'disk_image: x86_64_crb_linux_l2-adventerprisek9-ms' \
+            > "${test_root}/discovery/ioll2-xe-99-99.yaml"
+          HYOPS_TEST_IOL_DIR="${test_root}/discovery" \
+            ansible-playbook roles/containerlab_lab/tests/local-image-discovery.yml
           HYOPS_TEST_IOL_SOURCE="${test_root}/iol-test.bin" \
             ansible-playbook roles/containerlab_lab/tests/local-image-build.yml
           docker image inspect vrnetlab/cisco_iol:99.99 >/dev/null

@@ -25,3 +25,10 @@ digest. The operator remains responsible for image and licence rights.
 IOL-XE binary or supported OCI archive on the managed host when the expected
 image is absent. Each declaration requires an explicit authorised-use
 acknowledgement. The source and build tree are removed after the build.
+
+`containerlab_lab_local_image_dir` removes the need for per-image build
+declarations. It discovers loose binaries from adjacent standard CML
+image-definition YAML files and recognises standard IOL-XE OCI archive names.
+Set `containerlab_lab_local_image_dir_authorised_use` to `true`; discovered
+checksums, L2 or L3 type, versions and image references are resolved by the
+role. Explicit build declarations remain available for non-standard layouts.

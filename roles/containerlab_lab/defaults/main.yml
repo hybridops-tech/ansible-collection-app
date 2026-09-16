@@ -22,6 +22,10 @@ containerlab_lab_required_images: []
 containerlab_lab_pull_missing_images: false
 containerlab_lab_local_image_archives: []
 containerlab_lab_image_cache_dir: /var/cache/hybridops/containerlab/images
+# Standard CML image-definition YAML files identify loose IOL-XE binaries in
+# this controller-side directory. Standard OCI archive names are also detected.
+containerlab_lab_local_image_dir: ""
+containerlab_lab_local_image_dir_authorised_use: false
 containerlab_lab_local_image_builds: []
 containerlab_lab_image_build_root: /var/cache/hybridops/containerlab/builds
 containerlab_lab_vrnetlab_repository: https://github.com/srl-labs/vrnetlab.git
