@@ -136,9 +136,10 @@
         that:
           - ansible_facts['system'] == 'Linux'
           - ansible_facts['distribution'] == 'Ubuntu'
-          - ansible_facts['distribution_version'] is version('22.04', '>=')
-          - ansible_facts['distribution_version'] is version('24.04', '<=')
-        fail_msg: "Containerlab GUI requires Ubuntu 22.04-24.04."
+          - >-
+            ansible_facts['distribution_version'] is
+            match('^(22\.04|24\.04)(\.|$)')
+        fail_msg: "Containerlab GUI requires Ubuntu 22.04 or 24.04."
 
     - name: Read Containerlab operator account
       ansible.builtin.getent:
