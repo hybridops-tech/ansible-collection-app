@@ -85,8 +85,8 @@
     that:
       - >-
         item.rc == 0 or
-        'No such object' in item.stderr or
-        'No such container' in item.stderr
+        'no such object' in (item.stderr | lower) or
+        'no such container' in (item.stderr | lower)
     fail_msg: >-
       Unable to inspect Containerlab GUI container {{ item.item }}.
   loop: "{{ containerlab_gui_remove_inspect.results | default([]) }}"
@@ -120,7 +120,7 @@
   changed_when: containerlab_gui_remove.rc == 0
   failed_when:
     - containerlab_gui_remove.rc != 0
-    - "'No such container' not in containerlab_gui_remove.stderr"
+    - "'no such container' not in (containerlab_gui_remove.stderr | lower)"
   when: _containerlab_gui_effective_action == 'absent'
 
 - name: Publish absent Containerlab GUI result
@@ -181,13 +181,15 @@
       ansible.builtin.file:
         path: "{{ item.path }}"
         state: directory
-        owner: root
+        owner: "{{ item.owner }}"
         group: root
         mode: "{{ item.mode }}"
       loop:
         - path: "{{ containerlab_gui_labs_dir }}"
+          owner: "{{ containerlab_gui_operator_user }}"
           mode: "0750"
         - path: "{{ containerlab_gui_state_dir }}"
+          owner: root
           mode: "0700"
 
     - name: Read Docker bridge gateway
@@ -267,8 +269,8 @@
         that:
           - >-
             item.rc == 0 or
-            'No such object' in item.stderr or
-            'No such container' in item.stderr
+            'no such object' in (item.stderr | lower) or
+            'no such container' in (item.stderr | lower)
         fail_msg: >-
           Unable to inspect Containerlab GUI container {{ item.item }}.
       loop: "{{ containerlab_gui_inspect.results }}"

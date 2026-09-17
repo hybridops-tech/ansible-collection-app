@@ -37,7 +37,7 @@
           done
           case "$action:$name" in
             inspect:*missing*)
-              printf '%s\n' "Error: No such object: $name" >&2
+              printf '%s\n' "error: no such object: $name" >&2
               exit 1
               ;;
             inspect:*unmanaged*)

@@ -112,6 +112,10 @@
 - name: Build missing Containerlab image
   when: containerlab_lab_local_image_build_initial.rc != 0
   block:
+    - name: Read installed local image build package state
+      ansible.builtin.package_facts:
+        manager: auto
+
     - name: Install local image build dependencies
       ansible.builtin.apt:
         name:
@@ -121,6 +125,10 @@
           - make
         state: present
         update_cache: true
+      when: >-
+        ['binutils', 'file', 'git', 'make']
+        | difference(ansible_facts.packages.keys() | list)
+        | length > 0
 
     - name: Create local image build root
       ansible.builtin.file:

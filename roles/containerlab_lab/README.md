@@ -14,6 +14,9 @@ Supported actions:
 
 `containerlab_lab_labdir_base` keeps generated `clab-*` data outside the staged source tree.
 
+`containerlab_lab_remote_owner` owns the staged topology tree. Set it to the
+account that operates local access and the browser interface.
+
 `containerlab_lab_required_images` is an optional preflight list. Missing images are fetched only when `containerlab_lab_pull_missing_images` is enabled. This component does not distribute proprietary NOS images.
 
 `containerlab_lab_local_image_archives` loads operator-supplied container image archives
