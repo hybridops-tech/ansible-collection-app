@@ -6,6 +6,7 @@ containerlab_lab_topology_path: ""
 containerlab_lab_source_dir: ""
 containerlab_lab_topology_relpath: ""
 containerlab_lab_remote_dir: /var/lib/hybridops/containerlab/labs/managed
+containerlab_lab_remote_owner: root
 # Keep Containerlab-generated clab-* artifacts outside the authoritative source
 # tree so source preservation does not implicitly absorb native runtime state.
 containerlab_lab_labdir_base: /var/lib/hybridops/containerlab/labdirs

@@ -1,0 +1,475 @@
+---
+- name: Resolve effective Containerlab GUI action
+  ansible.builtin.set_fact:
+    _containerlab_gui_effective_action: >-
+      {{ _containerlab_gui_action | default(containerlab_gui_action, true) }}
+
+- name: Resolve managed Containerlab GUI password
+  ansible.builtin.set_fact:
+    _containerlab_gui_effective_password: >-
+      {{
+        containerlab_gui_operator_password
+        if containerlab_gui_operator_password | length > 0
+        else (
+          lookup('env', containerlab_gui_operator_password_env)
+          if containerlab_gui_operator_password_env | length > 0
+          else ''
+        )
+      }}
+  no_log: true
+
+- name: Validate Containerlab GUI inputs
+  ansible.builtin.assert:
+    that:
+      - _containerlab_gui_effective_action in ['present', 'absent']
+      - containerlab_gui_operator_user | length > 0
+      - containerlab_gui_operator_user is match('^[a-z_][a-z0-9_-]{0,31}$')
+      - containerlab_gui_operator_user != 'root'
+      - containerlab_gui_labs_dir is match('^/')
+      - containerlab_gui_state_dir is match('^/')
+      - containerlab_gui_labs_dir != '/'
+      - containerlab_gui_state_dir != '/'
+      - "'/../' not in containerlab_gui_labs_dir"
+      - "'/../' not in containerlab_gui_state_dir"
+      - not containerlab_gui_labs_dir.endswith('/..')
+      - not containerlab_gui_state_dir.endswith('/..')
+      - >-
+        (containerlab_gui_state_dir | regex_replace('/+$', '')) !=
+        (containerlab_gui_labs_dir | regex_replace('/+$', ''))
+      - >-
+        not containerlab_gui_state_dir.startswith(
+          containerlab_gui_labs_dir | regex_replace('/+$', '') ~ '/'
+        )
+      - containerlab_gui_api_name is match('^[A-Za-z0-9][A-Za-z0-9_.-]+$')
+      - containerlab_gui_web_name is match('^[A-Za-z0-9][A-Za-z0-9_.-]+$')
+      - containerlab_gui_api_name != containerlab_gui_web_name
+      - containerlab_gui_api_user_group is match('^[a-z_][a-z0-9_-]{0,31}$')
+      - containerlab_gui_api_superuser_group is match('^[a-z_][a-z0-9_-]{0,31}$')
+      - containerlab_gui_api_user_group != containerlab_gui_api_superuser_group
+      - containerlab_gui_api_image | length > 0
+      - containerlab_gui_web_image | length > 0
+      - containerlab_gui_api_port | int > 0
+      - containerlab_gui_api_port | int <= 65535
+      - containerlab_gui_web_port | int > 0
+      - containerlab_gui_web_port | int <= 65535
+      - containerlab_gui_api_port | int != containerlab_gui_web_port | int
+      - containerlab_gui_health_timeout_s | int > 0
+      - >-
+        _containerlab_gui_effective_action == 'absent' or
+        not (containerlab_gui_manage_operator_password | bool) or
+        _containerlab_gui_effective_password | length > 0
+      - >-
+        _containerlab_gui_effective_action == 'absent' or
+        not (containerlab_gui_manage_operator_password | bool) or
+        not (_containerlab_gui_effective_password is search('[:\r\n]'))
+    fail_msg: "Containerlab GUI inputs are invalid."
+
+- name: Inspect Containerlab GUI containers before removal
+  ansible.builtin.command:
+    argv:
+      - docker
+      - inspect
+      - --format
+      - "{{ '{{index .Config.Labels \"io.hybridops.managed\"}}' }}"
+      - "{{ item }}"
+  loop:
+    - "{{ containerlab_gui_web_name }}"
+    - "{{ containerlab_gui_api_name }}"
+  register: containerlab_gui_remove_inspect
+  changed_when: false
+  failed_when: false
+  when: _containerlab_gui_effective_action == 'absent'
+
+- name: Verify Containerlab GUI containers can be inspected before removal
+  ansible.builtin.assert:
+    that:
+      - >-
+        item.rc == 0 or
+        'no such object' in (item.stderr | lower) or
+        'no such container' in (item.stderr | lower)
+    fail_msg: >-
+      Unable to inspect Containerlab GUI container {{ item.item }}.
+  loop: "{{ containerlab_gui_remove_inspect.results | default([]) }}"
+  loop_control:
+    label: "{{ item.item }}"
+  when: _containerlab_gui_effective_action == 'absent'
+
+- name: Refuse to remove unmanaged Containerlab GUI containers
+  ansible.builtin.assert:
+    that:
+      - item.rc != 0 or item.stdout | trim == 'true'
+    fail_msg: >-
+      Container {{ item.item }} exists but is not managed by HybridOps.
+  loop: "{{ containerlab_gui_remove_inspect.results | default([]) }}"
+  loop_control:
+    label: "{{ item.item }}"
+  when: _containerlab_gui_effective_action == 'absent'
+
+- name: Remove managed Containerlab GUI containers
+  ansible.builtin.command:
+    argv:
+      - docker
+      - rm
+      - --force
+      - "{{ item }}"
+  loop: >-
+    {{ containerlab_gui_remove_inspect.results | default([])
+       | selectattr('rc', 'equalto', 0)
+       | map(attribute='item') | list }}
+  register: containerlab_gui_remove
+  changed_when: containerlab_gui_remove.rc == 0
+  failed_when:
+    - containerlab_gui_remove.rc != 0
+    - "'no such container' not in (containerlab_gui_remove.stderr | lower)"
+  when: _containerlab_gui_effective_action == 'absent'
+
+- name: Publish absent Containerlab GUI result
+  ansible.builtin.set_fact:
+    containerlab_gui_result:
+      status: absent
+      api_endpoint: ""
+      web_endpoint: ""
+      api_image: "{{ containerlab_gui_api_image }}"
+      web_image: "{{ containerlab_gui_web_image }}"
+  when: _containerlab_gui_effective_action == 'absent'
+
+- name: Configure Containerlab GUI
+  when: _containerlab_gui_effective_action == 'present'
+  block:
+    - name: Verify Containerlab GUI host requirements
+      ansible.builtin.assert:
+        that:
+          - ansible_facts['system'] == 'Linux'
+          - ansible_facts['distribution'] == 'Ubuntu'
+          - >-
+            ansible_facts['distribution_version'] is
+            match('^(22\.04|24\.04)(\.|$)')
+        fail_msg: "Containerlab GUI requires Ubuntu 22.04 or 24.04."
+
+    - name: Read Containerlab operator account
+      ansible.builtin.getent:
+        database: passwd
+        key: "{{ containerlab_gui_operator_user }}"
+
+    - name: Ensure Containerlab API groups exist
+      ansible.builtin.group:
+        name: "{{ item }}"
+        state: present
+      loop:
+        - "{{ containerlab_gui_api_user_group }}"
+        - "{{ containerlab_gui_api_superuser_group }}"
+
+    - name: Grant operator Containerlab API access
+      ansible.builtin.user:
+        name: "{{ containerlab_gui_operator_user }}"
+        groups:
+          - "{{ containerlab_gui_api_user_group }}"
+          - "{{ containerlab_gui_api_superuser_group }}"
+        append: true
+
+    - name: Set managed Containerlab GUI login password
+      ansible.builtin.command:
+        argv:
+          - chpasswd
+        stdin: >-
+          {{ containerlab_gui_operator_user }}:{{ _containerlab_gui_effective_password }}
+      no_log: true
+      changed_when: true
+      when: containerlab_gui_manage_operator_password | bool
+
+    - name: Create Containerlab GUI directories
+      ansible.builtin.file:
+        path: "{{ item.path }}"
+        state: directory
+        owner: "{{ item.owner }}"
+        group: root
+        mode: "{{ item.mode }}"
+      loop:
+        - path: "{{ containerlab_gui_labs_dir }}"
+          owner: "{{ containerlab_gui_operator_user }}"
+          mode: "0750"
+        - path: "{{ containerlab_gui_state_dir }}"
+          owner: root
+          mode: "0700"
+
+    - name: Read Docker bridge gateway
+      ansible.builtin.command:
+        argv:
+          - docker
+          - network
+          - inspect
+          - bridge
+          - --format
+          - "{{ '{{(index .IPAM.Config 0).Gateway}}' }}"
+      register: containerlab_gui_bridge
+      changed_when: false
+
+    - name: Verify Docker bridge gateway
+      ansible.builtin.assert:
+        that:
+          - >-
+            containerlab_gui_bridge.stdout | trim is
+            match('^[0-9]{1,3}(\.[0-9]{1,3}){3}$')
+        fail_msg: "Docker bridge gateway is unavailable."
+
+    - name: Read or create API signing secret
+      ansible.builtin.shell: |
+        set -eu
+        secret_file={{ containerlab_gui_state_dir | quote }}/jwt-secret
+        if [ ! -s "$secret_file" ]; then
+          umask 077
+          openssl rand -hex 32 > "$secret_file"
+        fi
+        cat "$secret_file"
+      args:
+        executable: /bin/sh
+      register: containerlab_gui_jwt
+      changed_when: false
+      no_log: true
+
+    - name: Resolve Containerlab GUI configuration identity
+      ansible.builtin.set_fact:
+        containerlab_gui_bridge_gateway: "{{ containerlab_gui_bridge.stdout | trim }}"
+        containerlab_gui_config_identity: >-
+          {{ {
+            'api_image': containerlab_gui_api_image,
+            'api_port': containerlab_gui_api_port | int,
+            'api_host': containerlab_gui_bridge.stdout | trim,
+            'api_user_group': containerlab_gui_api_user_group,
+            'labs_dir': containerlab_gui_labs_dir,
+            'operator': containerlab_gui_operator_user,
+            'state_dir': containerlab_gui_state_dir,
+            'superuser_group': containerlab_gui_api_superuser_group,
+            'jwt_secret_sha256': containerlab_gui_jwt.stdout | trim | hash('sha256'),
+            'web_image': containerlab_gui_web_image,
+            'web_port': containerlab_gui_web_port | int
+          } | to_json | hash('sha256') }}
+      no_log: true
+
+    - name: Inspect managed Containerlab GUI containers
+      ansible.builtin.command:
+        argv:
+          - docker
+          - inspect
+          - --format
+          - >-
+            {{ '{{index .Config.Labels "io.hybridops.managed"}}|'
+               ~ '{{index .Config.Labels "io.hybridops.config"}}|'
+               ~ '{{.State.Running}}' }}
+          - "{{ item }}"
+      loop:
+        - "{{ containerlab_gui_api_name }}"
+        - "{{ containerlab_gui_web_name }}"
+      register: containerlab_gui_inspect
+      changed_when: false
+      failed_when: false
+
+    - name: Verify Containerlab GUI containers can be inspected before replacement
+      ansible.builtin.assert:
+        that:
+          - >-
+            item.rc == 0 or
+            'no such object' in (item.stderr | lower) or
+            'no such container' in (item.stderr | lower)
+        fail_msg: >-
+          Unable to inspect Containerlab GUI container {{ item.item }}.
+      loop: "{{ containerlab_gui_inspect.results }}"
+      loop_control:
+        label: "{{ item.item }}"
+
+    - name: Refuse to replace unmanaged Containerlab GUI containers
+      ansible.builtin.assert:
+        that:
+          - item.rc != 0 or item.stdout.split('|')[0] == 'true'
+        fail_msg: >-
+          Container {{ item.item }} exists but is not managed by HybridOps.
+      loop: "{{ containerlab_gui_inspect.results }}"
+      loop_control:
+        label: "{{ item.item }}"
+
+    - name: Remove stale Containerlab GUI containers
+      ansible.builtin.command:
+        argv:
+          - docker
+          - rm
+          - --force
+          - "{{ item.item }}"
+      loop: "{{ containerlab_gui_inspect.results }}"
+      loop_control:
+        label: "{{ item.item }}"
+      when:
+        - item.rc == 0
+        - >-
+          item.stdout | trim !=
+          ('true|' ~ containerlab_gui_config_identity ~ '|true')
+      changed_when: true
+
+    - name: Reinspect managed Containerlab GUI containers
+      ansible.builtin.command:
+        argv:
+          - docker
+          - inspect
+          - --format
+          - "{{ '{{.State.Running}}' }}"
+          - "{{ item }}"
+      loop:
+        - "{{ containerlab_gui_api_name }}"
+        - "{{ containerlab_gui_web_name }}"
+      register: containerlab_gui_ready
+      changed_when: false
+      failed_when: false
+
+    - name: Pull pinned Containerlab GUI images
+      ansible.builtin.command:
+        argv:
+          - docker
+          - pull
+          - "{{ item }}"
+      loop:
+        - "{{ containerlab_gui_api_image }}"
+        - "{{ containerlab_gui_web_image }}"
+      register: containerlab_gui_pull
+      changed_when: "'Downloaded newer image' in containerlab_gui_pull.stdout"
+      when: >-
+        containerlab_gui_ready.results
+        | selectattr('rc', 'ne', 0)
+        | list
+        | length > 0
+
+    - name: Start Containerlab API server
+      ansible.builtin.command:
+        argv:
+          - docker
+          - run
+          - --detach
+          - --name
+          - "{{ containerlab_gui_api_name }}"
+          - --restart
+          - unless-stopped
+          - --privileged
+          - --network
+          - host
+          - --pid
+          - host
+          - --label
+          - io.hybridops.managed=true
+          - --label
+          - "io.hybridops.config={{ containerlab_gui_config_identity }}"
+          - --env
+          - "API_PORT={{ containerlab_gui_api_port }}"
+          - --env
+          - "API_SERVER_HOST={{ containerlab_gui_bridge_gateway }}"
+          - --env
+          - "JWT_SECRET={{ containerlab_gui_jwt.stdout | trim }}"
+          - --env
+          - JWT_EXPIRATION=24h
+          - --env
+          - "API_USER_GROUP={{ containerlab_gui_api_user_group }}"
+          - --env
+          - "SUPERUSER_GROUP={{ containerlab_gui_api_superuser_group }}"
+          - --env
+          - CLAB_RUNTIME=docker
+          - --env
+          - LOG_LEVEL=info
+          - --env
+          - TLS_ENABLE=true
+          - --env
+          - "CLAB_LABS_ROOT={{ containerlab_gui_labs_dir }}"
+          - --volume
+          - /var/run/docker.sock:/var/run/docker.sock
+          - --volume
+          - /var/run/netns:/var/run/netns
+          - --volume
+          - /var/lib/docker/containers:/var/lib/docker/containers
+          - --volume
+          - /etc/passwd:/etc/passwd:ro
+          - --volume
+          - /etc/shadow:/etc/shadow:ro
+          - --volume
+          - /etc/group:/etc/group:ro
+          - --volume
+          - /etc/gshadow:/etc/gshadow:ro
+          - --volume
+          - /home:/home
+          - --volume
+          - "{{ containerlab_gui_labs_dir }}:{{ containerlab_gui_labs_dir }}"
+          - "{{ containerlab_gui_api_image }}"
+      no_log: true
+      when: containerlab_gui_ready.results[0].rc != 0
+      changed_when: true
+
+    - name: Start Containerlab web GUI
+      ansible.builtin.command:
+        argv:
+          - docker
+          - run
+          - --detach
+          - --name
+          - "{{ containerlab_gui_web_name }}"
+          - --restart
+          - unless-stopped
+          - --publish
+          - "127.0.0.1:{{ containerlab_gui_web_port }}:3001"
+          - --add-host
+          - host.docker.internal:host-gateway
+          - --label
+          - io.hybridops.managed=true
+          - --label
+          - "io.hybridops.config={{ containerlab_gui_config_identity }}"
+          - --env
+          - "CLAB_API_URL=https://host.docker.internal:{{ containerlab_gui_api_port }}"
+          - --env
+          - CLAB_API_TLS_VERIFY=false
+          - "{{ containerlab_gui_web_image }}"
+      when: containerlab_gui_ready.results[1].rc != 0
+      changed_when: true
+
+    - name: Wait for Containerlab API health
+      ansible.builtin.uri:
+        url: >-
+          https://{{ containerlab_gui_bridge_gateway }}:{{ containerlab_gui_api_port }}/health
+        method: GET
+        validate_certs: false
+        status_code: 200
+      register: containerlab_gui_api_health
+      retries: "{{ [1, (containerlab_gui_health_timeout_s | int // 3)] | max }}"
+      delay: 3
+      until: containerlab_gui_api_health.status == 200
+
+    - name: Wait for Containerlab web GUI health
+      ansible.builtin.uri:
+        url: "https://127.0.0.1:{{ containerlab_gui_web_port }}/api/config"
+        method: GET
+        validate_certs: false
+        status_code: 200
+      register: containerlab_gui_web_health
+      retries: "{{ [1, (containerlab_gui_health_timeout_s | int // 3)] | max }}"
+      delay: 3
+      until: containerlab_gui_web_health.status == 200
+
+    - name: Read Containerlab GUI image identities
+      ansible.builtin.command:
+        argv:
+          - docker
+          - inspect
+          - --format
+          - "{{ '{{.Image}}' }}"
+          - "{{ item }}"
+      loop:
+        - "{{ containerlab_gui_api_name }}"
+        - "{{ containerlab_gui_web_name }}"
+      register: containerlab_gui_images
+      changed_when: false
+
+    - name: Publish Containerlab GUI result
+      ansible.builtin.set_fact:
+        containerlab_gui_result:
+          status: ready
+          api_endpoint: >-
+            https://{{ containerlab_gui_bridge_gateway }}:{{ containerlab_gui_api_port }}
+          web_endpoint: >-
+            https://127.0.0.1:{{ containerlab_gui_web_port }}
+          api_image: "{{ containerlab_gui_api_image }}"
+          api_image_id: "{{ containerlab_gui_images.results[0].stdout | trim }}"
+          web_image: "{{ containerlab_gui_web_image }}"
+          web_image_id: "{{ containerlab_gui_images.results[1].stdout | trim }}"

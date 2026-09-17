@@ -17,6 +17,7 @@ Role-level variables and assumptions are documented in each role's `README.md`. 
 | Role | Purpose |
 |------|---------|
 | `containerlab` | Install and verify a pinned Containerlab runtime. |
+| `containerlab_gui` | Run pinned Containerlab API and web GUI components. |
 | `containerlab_healthcheck` | Verify runtime, KVM, images and deployed lab state. |
 | `containerlab_lab` | Validate and operate native Containerlab topologies. |
 | `containerlab_recovery` | Export and import guarded off-host recovery data. |

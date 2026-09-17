@@ -109,6 +109,9 @@ jobs:
       - name: Verify Containerlab recovery export and import
         run: ansible-playbook roles/containerlab_recovery/tests/smoke.yml
 
+      - name: Verify Containerlab GUI removal ownership
+        run: ansible-playbook roles/containerlab_gui/tests/removal-boundary.yml
+
       - name: Verify local Containerlab image loading
         shell: bash
         run: |

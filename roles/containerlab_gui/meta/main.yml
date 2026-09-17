@@ -1,0 +1,17 @@
+---
+galaxy_info:
+  author: HybridOps.Tech
+  description: Run the official Containerlab API server and web GUI on a managed Linux host
+  license: MIT
+  min_ansible_version: "2.15"
+  platforms:
+    - name: Ubuntu
+      versions:
+        - jammy
+        - noble
+  galaxy_tags:
+    - networking
+    - containerlab
+    - gui
+    - docker
+dependencies: []

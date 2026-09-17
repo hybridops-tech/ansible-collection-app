@@ -52,13 +52,20 @@
       Containerlab package verification must use either a pinned SHA-256 digest
       or an HTTPS SHA-256 checksum manifest.
 
+- name: Read installed package state
+  ansible.builtin.package_facts:
+    manager: auto
+  when: containerlab_install_docker | bool
+
 - name: Install Docker runtime
   ansible.builtin.apt:
     name: "{{ containerlab_docker_package }}"
     state: present
     update_cache: true
   register: containerlab_docker_install
-  when: containerlab_install_docker | bool
+  when:
+    - containerlab_install_docker | bool
+    - containerlab_docker_package not in ansible_facts.packages
 
 - name: Ensure Docker service is enabled and running
   ansible.builtin.service:

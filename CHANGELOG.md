@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.13] - 2026-09-17
+
+### Added
+
+- Added pinned Containerlab API and web GUI components with loopback-only web
+  publication and Linux account authentication.
+
+### Fixed
+
+- Avoided refreshing package metadata when the requested Docker package is
+  already installed.
+- Avoided refreshing package metadata when all Containerlab image-build
+  dependencies are already installed.
+- Kept staged and restored Containerlab topology trees readable by the declared
+  operator account.
+
 ## [0.1.12] - 2026-09-16
 
 ### Added
