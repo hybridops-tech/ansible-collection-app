@@ -112,6 +112,9 @@ jobs:
       - name: Verify Containerlab GUI removal ownership
         run: ansible-playbook roles/containerlab_gui/tests/removal-boundary.yml
 
+      - name: Verify Containerlab recovery authority input precedence
+        run: ansible-playbook roles/containerlab_lab/tests/recovery-authority.yml
+
       - name: Verify local Containerlab image loading
         shell: bash
         run: |
