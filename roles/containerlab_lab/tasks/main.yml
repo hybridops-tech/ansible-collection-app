@@ -1,10 +1,34 @@
 ---
-- name: Resolve effective Containerlab lab action
+- name: Resolve effective Containerlab lab inputs
   ansible.builtin.set_fact:
     _containerlab_lab_effective_action: >-
       {{ _containerlab_lab_action | default(containerlab_lab_action, true) }}
     _containerlab_lab_effective_destroy_all: >-
       {{ _containerlab_lab_destroy_all | default(containerlab_lab_destroy_all, true) }}
+    _containerlab_lab_effective_source_dir: >-
+      {{
+        _containerlab_lab_source_dir
+        if _containerlab_lab_source_dir is defined
+        else containerlab_lab_source_dir
+      }}
+    _containerlab_lab_effective_topology_path_input: >-
+      {{
+        _containerlab_lab_topology_path
+        if _containerlab_lab_topology_path is defined
+        else containerlab_lab_topology_path
+      }}
+    _containerlab_lab_effective_restore_all_dir: >-
+      {{
+        _containerlab_lab_restore_all_dir
+        if _containerlab_lab_restore_all_dir is defined
+        else containerlab_lab_restore_all_dir
+      }}
+    _containerlab_lab_effective_required_images: >-
+      {{
+        _containerlab_lab_required_images
+        if _containerlab_lab_required_images is defined
+        else containerlab_lab_required_images
+      }}
 
 - name: Validate Containerlab lab inputs
   ansible.builtin.assert:
@@ -18,9 +42,9 @@
       - >-
         (_containerlab_lab_effective_action == 'destroy' and
          _containerlab_lab_effective_destroy_all | bool) or
-        (containerlab_lab_source_dir | length > 0 and
+        (_containerlab_lab_effective_source_dir | length > 0 and
          containerlab_lab_topology_relpath | length > 0) or
-        (containerlab_lab_topology_path | length > 0)
+        (_containerlab_lab_effective_topology_path_input | length > 0)
     fail_msg: >-
       A supported Containerlab action, a native labdir base, and either an
       already-remote topology path, a controller-side source directory plus
@@ -43,7 +67,7 @@
       - not (containerlab_lab_topology_relpath | regex_search('^/'))
       - "'..' not in containerlab_lab_topology_relpath.split('/')"
     fail_msg: "containerlab_lab_topology_relpath must stay within the staged source directory."
-  when: containerlab_lab_source_dir | length > 0
+  when: _containerlab_lab_effective_source_dir | length > 0
 
 - name: Create managed Containerlab lab directory
   ansible.builtin.file:
@@ -51,7 +75,7 @@
     state: directory
     owner: "{{ containerlab_lab_remote_owner }}"
     mode: "0750"
-  when: containerlab_lab_source_dir | length > 0
+  when: _containerlab_lab_effective_source_dir | length > 0
 
 - name: Create native Containerlab generated-lab base
   ansible.builtin.file:
@@ -63,19 +87,19 @@
 
 - name: Stage unchanged Containerlab lab source tree
   ansible.builtin.copy:
-    src: "{{ containerlab_lab_source_dir | regex_replace('/+$', '') }}/"
+    src: "{{ _containerlab_lab_effective_source_dir | regex_replace('/+$', '') }}/"
     dest: "{{ containerlab_lab_remote_dir | regex_replace('/+$', '') }}/"
     owner: "{{ containerlab_lab_remote_owner }}"
     mode: preserve
-  when: containerlab_lab_source_dir | length > 0
+  when: _containerlab_lab_effective_source_dir | length > 0
 
 - name: Resolve effective Containerlab topology path
   ansible.builtin.set_fact:
     containerlab_lab_effective_topology_path: >-
       {{
         (containerlab_lab_remote_dir | regex_replace('/+$', '')) ~ '/' ~ containerlab_lab_topology_relpath
-        if containerlab_lab_source_dir | length > 0
-        else containerlab_lab_topology_path
+        if _containerlab_lab_effective_source_dir | length > 0
+        else _containerlab_lab_effective_topology_path_input
       }}
   when: >-
     not (_containerlab_lab_effective_action == 'destroy' and
@@ -180,7 +204,7 @@
   ansible.builtin.set_fact:
     containerlab_lab_effective_required_images: >-
       {{
-        (containerlab_lab_required_images
+        (_containerlab_lab_effective_required_images
          + (containerlab_lab_local_image_build_results
             | map(attribute='image') | list))
         | unique | list
@@ -260,8 +284,8 @@
   ansible.builtin.command:
     argv: >-
       {{ ['containerlab', 'deploy', '-t', containerlab_lab_effective_topology_path]
-         + (['--restore-all', containerlab_lab_restore_all_dir]
-            if containerlab_lab_restore_all_dir | length > 0 else []) }}
+         + (['--restore-all', _containerlab_lab_effective_restore_all_dir]
+            if _containerlab_lab_effective_restore_all_dir | length > 0 else []) }}
   environment: "{{ containerlab_lab_command_environment }}"
   register: containerlab_lab_command
   changed_when: true
@@ -379,12 +403,12 @@
     containerlab_lab_result:
       action: "{{ _containerlab_lab_effective_action }}"
       topology: "{{ containerlab_lab_effective_topology_path | default('') }}"
-      source_staged: "{{ containerlab_lab_source_dir | length > 0 }}"
+      source_staged: "{{ _containerlab_lab_effective_source_dir | length > 0 }}"
       labdir_base: "{{ containerlab_lab_labdir_base }}"
       destroy_all: "{{ _containerlab_lab_effective_destroy_all | bool }}"
       rc: "{{ containerlab_lab_command.rc | default(0) }}"
       stdout: "{{ containerlab_lab_command.stdout | default('') }}"
       stderr: "{{ containerlab_lab_command.stderr | default('') }}"
-      restore_all_dir: "{{ containerlab_lab_restore_all_dir }}"
+      restore_all_dir: "{{ _containerlab_lab_effective_restore_all_dir }}"
       local_images: "{{ containerlab_lab_local_image_results | default([]) }}"
       local_image_builds: "{{ containerlab_lab_local_image_build_results | default([]) }}"

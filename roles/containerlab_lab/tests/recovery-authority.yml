@@ -1,0 +1,115 @@
+---
+- name: Test Containerlab recovery authority input precedence
+  hosts: localhost
+  connection: local
+  become: true
+  gather_facts: false
+
+  vars:
+    test_user: "{{ lookup('env', 'USER') }}"
+    test_root: "/tmp/hybridops-containerlab-recovery-authority-test-{{ test_user }}"
+    controller_source: "{{ test_root }}/controller"
+    recovered_source: "{{ test_root }}/recovered"
+
+  environment:
+    PATH: "{{ test_root }}/bin:{{ lookup('env', 'PATH') }}"
+
+  pre_tasks:
+    - name: Reset test root
+      ansible.builtin.file:
+        path: "{{ test_root }}"
+        state: absent
+
+    - name: Create test directories
+      ansible.builtin.file:
+        path: "{{ item }}"
+        state: directory
+        owner: "{{ test_user }}"
+        mode: "0750"
+      loop:
+        - "{{ test_root }}/bin"
+        - "{{ controller_source }}"
+        - "{{ recovered_source }}"
+
+    - name: Create controller topology
+      ansible.builtin.copy:
+        dest: "{{ controller_source }}/lab.clab.yml"
+        owner: "{{ test_user }}"
+        mode: "0640"
+        content: |
+          name: controller
+
+    - name: Create recovered topology
+      ansible.builtin.copy:
+        dest: "{{ recovered_source }}/lab.clab.yml"
+        owner: "{{ test_user }}"
+        mode: "0640"
+        content: |
+          name: recovered
+
+    - name: Create Containerlab command stub
+      ansible.builtin.copy:
+        dest: "{{ test_root }}/bin/containerlab"
+        owner: "{{ test_user }}"
+        mode: "0750"
+        content: |
+          #!/usr/bin/env sh
+          printf '%s\n' "$@"
+
+  tasks:
+    - name: Validate recovered topology with internal authority inputs
+      ansible.builtin.include_role:
+        name: hybridops.app.containerlab_lab
+      vars:
+        containerlab_lab_action: deploy
+        containerlab_lab_source_dir: "{{ controller_source }}"
+        containerlab_lab_topology_relpath: lab.clab.yml
+        containerlab_lab_remote_dir: "{{ test_root }}/managed"
+        containerlab_lab_remote_owner: "{{ test_user }}"
+        containerlab_lab_labdir_base: "{{ test_root }}/labdirs"
+        containerlab_lab_required_images:
+          - controller.invalid/image:1
+        containerlab_lab_restore_all_dir: "{{ test_root }}/controller-restore"
+        _containerlab_lab_action: validate
+        _containerlab_lab_source_dir: ""
+        _containerlab_lab_topology_path: "{{ recovered_source }}/lab.clab.yml"
+        _containerlab_lab_required_images: []
+        _containerlab_lab_restore_all_dir: ""
+
+    - name: Require recovered topology authority
+      ansible.builtin.assert:
+        that:
+          - not (containerlab_lab_result.source_staged | bool)
+          - containerlab_lab_result.topology == recovered_source ~ '/lab.clab.yml'
+          - not (containerlab_lab_result.restore_all_dir | length > 0)
+
+    - name: Read managed controller source state
+      ansible.builtin.stat:
+        path: "{{ test_root }}/managed/lab.clab.yml"
+      register: managed_controller_topology
+
+    - name: Require controller source was not staged
+      ansible.builtin.assert:
+        that:
+          - not managed_controller_topology.stat.exists
+
+    - name: Validate controller topology without recovery overrides
+      ansible.builtin.include_role:
+        name: hybridops.app.containerlab_lab
+      vars:
+        containerlab_lab_action: validate
+        containerlab_lab_source_dir: "{{ controller_source }}"
+        containerlab_lab_topology_relpath: lab.clab.yml
+        containerlab_lab_remote_dir: "{{ test_root }}/controller-managed"
+        containerlab_lab_remote_owner: "{{ test_user }}"
+        containerlab_lab_labdir_base: "{{ test_root }}/labdirs"
+        containerlab_lab_required_images: []
+        containerlab_lab_restore_all_dir: ""
+
+    - name: Require controller topology fallback
+      ansible.builtin.assert:
+        that:
+          - containerlab_lab_result.source_staged | bool
+          - >-
+            containerlab_lab_result.topology ==
+            test_root ~ '/controller-managed/lab.clab.yml'
