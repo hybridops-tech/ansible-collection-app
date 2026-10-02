@@ -1,0 +1,93 @@
+---
+- name: Test Containerlab destroy with declared images
+  hosts: localhost
+  connection: local
+  become: true
+  gather_facts: false
+
+  vars:
+    test_root: /tmp/hybridops-containerlab-destroy-image-test
+    test_user: "{{ lookup('env', 'USER') }}"
+
+  environment:
+    PATH: "{{ test_root }}/bin:{{ lookup('env', 'PATH') }}"
+
+  pre_tasks:
+    - name: Reset test root
+      ansible.builtin.file:
+        path: "{{ test_root }}"
+        state: absent
+
+    - name: Create test directories
+      ansible.builtin.file:
+        path: "{{ item }}"
+        state: directory
+        owner: "{{ test_user }}"
+        mode: "0750"
+      loop:
+        - "{{ test_root }}/bin"
+        - "{{ test_root }}/source"
+
+    - name: Write test topology
+      ansible.builtin.copy:
+        dest: "{{ test_root }}/source/lab.clab.yml"
+        owner: "{{ test_user }}"
+        mode: "0640"
+        content: |
+          name: destroy-image-test
+          topology:
+            nodes: {}
+
+    - name: Install Containerlab command stub
+      ansible.builtin.copy:
+        dest: "{{ test_root }}/bin/containerlab"
+        owner: "{{ test_user }}"
+        mode: "0750"
+        content: |
+          #!/bin/sh
+          printf '%s\n' "$*" > "{{ test_root }}/containerlab.args"
+
+    - name: Install rejecting Docker command stub
+      ansible.builtin.copy:
+        dest: "{{ test_root }}/bin/docker"
+        owner: "{{ test_user }}"
+        mode: "0750"
+        content: |
+          #!/bin/sh
+          printf '%s\n' 'Docker must not run during Containerlab destroy.' >&2
+          exit 97
+
+  tasks:
+    - name: Destroy topology with a declared image
+      ansible.builtin.include_role:
+        name: hybridops.app.containerlab_lab
+      vars:
+        _containerlab_lab_action: destroy
+        _containerlab_lab_destroy_all: false
+        containerlab_lab_source_dir: "{{ test_root }}/source"
+        containerlab_lab_topology_relpath: lab.clab.yml
+        containerlab_lab_remote_dir: "{{ test_root }}/managed"
+        containerlab_lab_remote_owner: "{{ test_user }}"
+        containerlab_lab_labdir_base: "{{ test_root }}/labdirs"
+        containerlab_lab_required_images:
+          - registry.invalid/frr:test
+        containerlab_lab_pull_missing_images: true
+
+    - name: Read Containerlab destroy invocation
+      ansible.builtin.slurp:
+        src: "{{ test_root }}/containerlab.args"
+      register: test_containerlab_destroy_invocation
+
+    - name: Require image-independent destroy
+      ansible.builtin.assert:
+        that:
+          - containerlab_lab_result.action == 'destroy'
+          - >-
+            'destroy -t' in
+            (test_containerlab_destroy_invocation.content | b64decode)
+
+  post_tasks:
+    - name: Remove test data
+      ansible.builtin.file:
+        path: "{{ test_root }}"
+        state: absent

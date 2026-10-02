@@ -233,8 +233,9 @@
       - "{{ item.item }}"
   loop: "{{ containerlab_lab_image_inspect_initial.results | default([]) }}"
   when:
+    - _containerlab_lab_effective_action != 'destroy'
     - containerlab_lab_pull_missing_images | bool
-    - item.rc != 0
+    - item.rc | default(0) != 0
   changed_when: true
 
 - name: Recheck required images

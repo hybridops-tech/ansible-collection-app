@@ -16,6 +16,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Materialised validated same-directory Containerlab saved-configuration links
+  as regular files before creating portable recovery archives.
+- Prevented Containerlab teardown from inspecting or pulling declared images.
 - Avoided refreshing package metadata when the requested Docker package is
   already installed.
 - Avoided refreshing package metadata when all Containerlab image-build
