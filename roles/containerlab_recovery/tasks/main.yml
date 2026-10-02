@@ -267,6 +267,117 @@
         - containerlab_recovery_mode != 'ephemeral'
         - containerlab_recovery_save_configs | bool
 
+    - name: Find saved-configuration links
+      ansible.builtin.find:
+        paths: "{{ containerlab_recovery_bundle_source_root }}/startup-configs"
+        recurse: true
+        file_type: link
+      register: containerlab_recovery_saved_config_links
+      when:
+        - containerlab_recovery_mode != 'ephemeral'
+        - containerlab_recovery_save_configs | bool
+
+    - name: Inspect saved-configuration links
+      ansible.builtin.stat:
+        path: "{{ containerlab_recovery_saved_config_link.path }}"
+        follow: false
+      loop: "{{ containerlab_recovery_saved_config_links.files | default([]) }}"
+      loop_control:
+        loop_var: containerlab_recovery_saved_config_link
+        label: "{{ containerlab_recovery_saved_config_link.path }}"
+      register: containerlab_recovery_saved_config_link_stats
+      when:
+        - containerlab_recovery_mode != 'ephemeral'
+        - containerlab_recovery_save_configs | bool
+
+    - name: Initialise saved-configuration link records
+      ansible.builtin.set_fact:
+        containerlab_recovery_saved_config_link_records: []
+      when:
+        - containerlab_recovery_mode != 'ephemeral'
+        - containerlab_recovery_save_configs | bool
+
+    - name: Record saved-configuration link metadata
+      ansible.builtin.set_fact:
+        containerlab_recovery_saved_config_link_records: >-
+          {{ containerlab_recovery_saved_config_link_records + [
+               {
+                 'alias_path': containerlab_recovery_saved_config_link_result.stat.path,
+                 'is_link': containerlab_recovery_saved_config_link_result.stat.islnk | default(false),
+                 'target_name': containerlab_recovery_saved_config_link_result.stat.lnk_target | default(''),
+                 'target_path': containerlab_recovery_saved_config_link_result.stat.lnk_source | default('')
+               }
+             ] }}
+      loop: "{{ containerlab_recovery_saved_config_link_stats.results | default([]) }}"
+      loop_control:
+        loop_var: containerlab_recovery_saved_config_link_result
+        label: "{{ containerlab_recovery_saved_config_link_result.stat.path }}"
+      when:
+        - not (containerlab_recovery_saved_config_link_result.skipped | default(false))
+
+    - name: Inspect saved-configuration link targets
+      ansible.builtin.stat:
+        path: "{{ containerlab_recovery_saved_config_link_record.target_path }}"
+        follow: true
+      loop: "{{ containerlab_recovery_saved_config_link_records }}"
+      loop_control:
+        loop_var: containerlab_recovery_saved_config_link_record
+        label: "{{ containerlab_recovery_saved_config_link_record.alias_path }}"
+      register: containerlab_recovery_saved_config_target_stats
+
+    - name: Require safe saved-configuration links
+      ansible.builtin.assert:
+        that:
+          - containerlab_recovery_saved_config_link_record.is_link | bool
+          - >-
+            containerlab_recovery_saved_config_link_record.target_name
+            is match('^[A-Za-z0-9][A-Za-z0-9_.-]*$')
+          - >-
+            containerlab_recovery_saved_config_link_record.target_path | dirname ==
+            containerlab_recovery_saved_config_link_record.alias_path | dirname
+          - >-
+            containerlab_recovery_saved_config_link_record.target_path not in
+            (containerlab_recovery_saved_config_link_records
+             | map(attribute='alias_path') | list)
+          - containerlab_recovery_saved_config_target_result.stat.exists | default(false)
+          - containerlab_recovery_saved_config_target_result.stat.isreg | default(false)
+        fail_msg: >-
+          Containerlab produced a saved-configuration link outside its
+          configuration directory or without a regular-file target.
+      loop: "{{ containerlab_recovery_saved_config_target_stats.results | default([]) }}"
+      loop_control:
+        loop_var: containerlab_recovery_saved_config_target_result
+        label: "{{ containerlab_recovery_saved_config_link_record.alias_path }}"
+      vars:
+        containerlab_recovery_saved_config_link_record: >-
+          {{ containerlab_recovery_saved_config_target_result.containerlab_recovery_saved_config_link_record }}
+
+    - name: Remove validated saved-configuration links
+      ansible.builtin.file:
+        path: "{{ containerlab_recovery_saved_config_link_record.alias_path }}"
+        state: absent
+      loop: "{{ containerlab_recovery_saved_config_target_stats.results | default([]) }}"
+      loop_control:
+        loop_var: containerlab_recovery_saved_config_target_result
+        label: "{{ containerlab_recovery_saved_config_link_record.alias_path }}"
+      vars:
+        containerlab_recovery_saved_config_link_record: >-
+          {{ containerlab_recovery_saved_config_target_result.containerlab_recovery_saved_config_link_record }}
+
+    - name: Materialise saved configurations for portable recovery
+      ansible.builtin.copy:
+        src: "{{ containerlab_recovery_saved_config_link_record.target_path }}"
+        dest: "{{ containerlab_recovery_saved_config_link_record.alias_path }}"
+        remote_src: true
+        mode: preserve
+      loop: "{{ containerlab_recovery_saved_config_target_stats.results | default([]) }}"
+      loop_control:
+        loop_var: containerlab_recovery_saved_config_target_result
+        label: "{{ containerlab_recovery_saved_config_link_record.alias_path }}"
+      vars:
+        containerlab_recovery_saved_config_link_record: >-
+          {{ containerlab_recovery_saved_config_target_result.containerlab_recovery_saved_config_link_record }}
+
     - name: Create native snapshot directory
       ansible.builtin.file:
         path: "{{ containerlab_recovery_bundle_root }}/snapshots"

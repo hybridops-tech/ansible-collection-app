@@ -54,6 +54,20 @@
             printf '%s\n' '{"version":"0.78.0"}'
           elif [ "$1" = "inspect" ]; then
             printf '%s\n' '{"recovery-test":[{"lab_name":"recovery-test"}]}'
+          elif [ "$1" = "save" ]; then
+            while [ "$#" -gt 0 ]; do
+              if [ "$1" = "--copy" ]; then
+                shift
+                copy_dir="$1"
+                break
+              fi
+              shift
+            done
+            mkdir -p "$copy_dir/clab-recovery-test/r1"
+            printf '%s\n' 'hostname recovery-test' > \
+              "$copy_dir/clab-recovery-test/r1/frr-260102_120000.conf"
+            ln -s frr-260102_120000.conf \
+              "$copy_dir/clab-recovery-test/r1/frr.conf"
           fi
 
     - name: Export test recovery set
@@ -68,7 +82,8 @@
         containerlab_recovery_topology_relpath: lab.clab.yml
         containerlab_recovery_remote_root: "{{ test_remote }}"
         containerlab_recovery_labdir_base: "{{ test_labdirs }}"
-        containerlab_recovery_save_configs: false
+        containerlab_recovery_save_configs: true
+        containerlab_recovery_save_configs_required: true
         containerlab_recovery_include_lab_dir: true
         containerlab_recovery_image_refs:
           - ghcr.io/nokia/srlinux:latest
@@ -106,6 +121,20 @@
         src: "{{ test_labdirs }}/clab-recovery-test/r1/nvram_00001"
       register: test_restored_native_state
 
+    - name: Read restored saved configuration state
+      ansible.builtin.stat:
+        path: >-
+          {{ containerlab_recovery_result.source_root ~
+             '/startup-configs/clab-recovery-test/r1/frr.conf' }}
+      register: test_restored_saved_config
+
+    - name: Read restored saved configuration
+      ansible.builtin.slurp:
+        src: >-
+          {{ containerlab_recovery_result.source_root ~
+             '/startup-configs/clab-recovery-test/r1/frr.conf' }}
+      register: test_restored_saved_config_content
+
     - name: Require verified recovery import
       ansible.builtin.assert:
         that:
@@ -113,10 +142,76 @@
           - containerlab_recovery_result.mode == 'rebuild'
           - test_restored_topology.stat.isreg
           - containerlab_recovery_result.lab_directory_restored | bool
+          - test_restored_saved_config.stat.isreg
+          - not (test_restored_saved_config.stat.islnk | default(false))
+          - >-
+            test_restored_saved_config_content.content | b64decode ==
+            'hostname recovery-test\n'
           - >-
             test_restored_native_state.content | b64decode ==
             'hybridops-containerlab-recovery-test\n'
           - containerlab_recovery_result.image_refs == ['ghcr.io/nokia/srlinux:latest']
+
+    - name: Install unsafe saved-configuration test command
+      ansible.builtin.copy:
+        dest: "{{ test_mock_bin }}/containerlab"
+        mode: "0750"
+        content: |
+          #!/bin/sh
+          if [ "$1" = "version" ]; then
+            printf '%s\n' '{"version":"0.78.0"}'
+          elif [ "$1" = "inspect" ]; then
+            printf '%s\n' '{"recovery-test":[{"lab_name":"recovery-test"}]}'
+          elif [ "$1" = "save" ]; then
+            while [ "$#" -gt 0 ]; do
+              if [ "$1" = "--copy" ]; then
+                shift
+                copy_dir="$1"
+                break
+              fi
+              shift
+            done
+            mkdir -p "$copy_dir/clab-recovery-test/r1"
+            ln -s /etc/passwd "$copy_dir/clab-recovery-test/r1/frr.conf"
+          fi
+
+    - name: Initialise unsafe saved-configuration result
+      ansible.builtin.set_fact:
+        test_unsafe_saved_config_rejected: false
+        test_unsafe_saved_config_diagnostic: ""
+
+    - name: Exercise unsafe saved-configuration rejection
+      block:
+        - name: Export recovery set containing an unsafe link
+          ansible.builtin.include_role:
+            name: hybridops.app.containerlab_recovery
+          vars:
+            _containerlab_recovery_action: export
+            _containerlab_recovery_topology_path: "{{ test_source }}/lab.clab.yml"
+            _containerlab_recovery_controller_dir: "{{ test_controller }}/unsafe"
+            containerlab_recovery_mode: rebuild
+            containerlab_recovery_source_root: "{{ test_source }}"
+            containerlab_recovery_topology_relpath: lab.clab.yml
+            containerlab_recovery_remote_root: "{{ test_remote }}/unsafe"
+            containerlab_recovery_labdir_base: "{{ test_labdirs }}"
+            containerlab_recovery_save_configs: true
+            containerlab_recovery_save_configs_required: true
+            containerlab_recovery_include_lab_dir: true
+
+      rescue:
+        - name: Record unsafe saved-configuration rejection
+          ansible.builtin.set_fact:
+            test_unsafe_saved_config_rejected: true
+            test_unsafe_saved_config_diagnostic: >-
+              {{ ansible_failed_result | to_json }}
+
+    - name: Require unsafe saved-configuration rejection
+      ansible.builtin.assert:
+        that:
+          - test_unsafe_saved_config_rejected | bool
+          - >-
+            'outside its configuration directory' in
+            test_unsafe_saved_config_diagnostic
 
   post_tasks:
     - name: Remove test data

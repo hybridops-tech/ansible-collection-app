@@ -115,6 +115,9 @@ jobs:
       - name: Verify Containerlab recovery authority input precedence
         run: ansible-playbook roles/containerlab_lab/tests/recovery-authority.yml
 
+      - name: Verify Containerlab destroy ignores declared images
+        run: ansible-playbook roles/containerlab_lab/tests/destroy-required-images.yml
+
       - name: Verify local Containerlab image loading
         shell: bash
         run: |
