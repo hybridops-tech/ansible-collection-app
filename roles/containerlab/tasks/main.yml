@@ -8,6 +8,8 @@
       - ansible_facts['architecture'] in containerlab_supported_architectures
       - containerlab_version | length > 0
       - containerlab_operator_user | length > 0
+      - containerlab_enable_ipv4_forwarding is boolean
+      - containerlab_ipv4_forwarding_sysctl_file is match('^/')
       - containerlab_post_install_connectivity_wait_s | int > 0
     fail_msg: >-
       Containerlab requires Ubuntu 22.04-24.04 on a supported architecture,
@@ -74,6 +76,47 @@
     state: started
   register: containerlab_docker_service
   when: containerlab_install_docker | bool
+
+- name: Persist IPv4 forwarding for Containerlab networking
+  ansible.builtin.copy:
+    dest: "{{ containerlab_ipv4_forwarding_sysctl_file }}"
+    content: "net.ipv4.ip_forward = 1\n"
+    owner: root
+    group: root
+    mode: "0644"
+  when: containerlab_enable_ipv4_forwarding | bool
+
+- name: Read IPv4 forwarding state
+  ansible.builtin.command:
+    argv:
+      - sysctl
+      - -n
+      - net.ipv4.ip_forward
+  register: containerlab_ipv4_forwarding_state
+  changed_when: false
+  when: containerlab_enable_ipv4_forwarding | bool
+
+- name: Enable IPv4 forwarding for the active runtime
+  ansible.builtin.command:
+    argv:
+      - sysctl
+      - -w
+      - net.ipv4.ip_forward=1
+  when:
+    - containerlab_enable_ipv4_forwarding | bool
+    - containerlab_ipv4_forwarding_state.stdout | trim != '1'
+  changed_when: true
+
+- name: Verify IPv4 forwarding state
+  ansible.builtin.command:
+    argv:
+      - sysctl
+      - -n
+      - net.ipv4.ip_forward
+  register: containerlab_ipv4_forwarding_verified
+  changed_when: false
+  failed_when: containerlab_ipv4_forwarding_verified.stdout | trim != '1'
+  when: containerlab_enable_ipv4_forwarding | bool
 
 - name: Reset SSH connection after Docker installation
   ansible.builtin.meta: reset_connection
@@ -189,6 +232,12 @@
       architecture: "{{ containerlab_package_arch }}"
       package_checksum: "sha256:{{ containerlab_package_file.stat.checksum }}"
       docker: "{{ 'managed' if containerlab_install_docker | bool else 'external' }}"
+      ipv4_forwarding: >-
+        {{
+          'managed-and-ready'
+          if containerlab_enable_ipv4_forwarding | bool
+          else 'externally-managed'
+        }}
       kvm: >-
         {{
           'required-and-ready'
