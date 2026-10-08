@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Added exact-commit workload execution with protected runtime inputs,
+  fail-closed acceptance and checksummed off-host evidence retention.
+
 ## [0.1.13] - 2026-09-17
 
 ### Added

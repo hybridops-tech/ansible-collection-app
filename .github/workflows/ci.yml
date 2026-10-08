@@ -115,6 +115,9 @@ jobs:
       - name: Verify Containerlab recovery authority input precedence
         run: ansible-playbook roles/containerlab_lab/tests/recovery-authority.yml
 
+      - name: Verify pinned workload execution and evidence retention
+        run: ansible-playbook roles/pinned_workload/tests/smoke.yml
+
       - name: Verify Containerlab destroy ignores declared images
         run: ansible-playbook roles/containerlab_lab/tests/destroy-required-images.yml
 
