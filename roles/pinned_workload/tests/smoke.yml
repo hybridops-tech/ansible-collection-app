@@ -37,6 +37,7 @@
           test "$(cat .runtime/input)" = "protected"
           mkdir -p reports
           printf '%s\n' 'passed' > reports/result.txt
+          printf '%s\n' 'successful stdout'
 
     - name: Write protected fixture input
       ansible.builtin.copy:
@@ -53,6 +54,8 @@
           set -euo pipefail
           mkdir -p reports
           printf '%s\n' 'failed as requested' > reports/failure.txt
+          printf '%s\n' 'failed stdout'
+          printf '%s\n' 'failed stderr' >&2
           exit 7
 
     - name: Initialise fixture repository
@@ -125,6 +128,8 @@
           - pinned_workload_result.resolved_commit == fixture_commit.stdout | trim
           - pinned_workload_result.missing_evidence | length == 0
           - pinned_workload_result.evidence_sha256 is match('^[0-9a-f]{64}$')
+          - lookup('file', pinned_workload_result.stdout_log) | trim == 'successful stdout'
+          - lookup('file', pinned_workload_result.stderr_log) | trim == ''
 
     - name: Inspect retained result
       ansible.builtin.command:
@@ -169,6 +174,8 @@
               - pinned_workload_result.exit_code | int == 7
               - pinned_workload_result.retained_evidence == ['reports']
               - pinned_workload_result.evidence_sha256 is match('^[0-9a-f]{64}$')
+              - lookup('file', pinned_workload_result.stdout_log) | trim == 'failed stdout'
+              - lookup('file', pinned_workload_result.stderr_log) | trim == 'failed stderr'
 
         - name: Inspect retained failed-workload result
           ansible.builtin.command:

@@ -5,7 +5,8 @@ declared entry point and retains the declared result paths on the controller.
 
 The workload remains responsible for its own operation and acceptance logic.
 This role records the execution binding and retained evidence needed by the
-surrounding host lifecycle.
+surrounding host lifecycle. Standard output and standard error are retained as
+protected controller-side logs.
 
 Required inputs:
 

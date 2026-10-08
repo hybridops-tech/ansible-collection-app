@@ -277,6 +277,30 @@
     - name: Resolve pinned workload completion time
       ansible.builtin.set_fact:
         pinned_workload_completed_at: "{{ now(utc=true, fmt='%Y-%m-%dT%H:%M:%SZ') }}"
+        pinned_workload_local_stdout: >-
+          {{ (pinned_workload_effective_controller_evidence_dir | regex_replace('/+$', ''))
+             ~ '/' ~ pinned_workload_id ~ '-' ~ pinned_workload_run_id ~ '.stdout.txt' }}
+        pinned_workload_local_stderr: >-
+          {{ (pinned_workload_effective_controller_evidence_dir | regex_replace('/+$', ''))
+             ~ '/' ~ pinned_workload_id ~ '-' ~ pinned_workload_run_id ~ '.stderr.txt' }}
+
+    - name: Retain pinned workload standard output
+      ansible.builtin.copy:
+        dest: "{{ pinned_workload_local_stdout }}"
+        mode: "0600"
+        content: "{{ pinned_workload_execution.stdout | default('') }}\n"
+      delegate_to: localhost
+      become: false
+      no_log: true
+
+    - name: Retain pinned workload standard error
+      ansible.builtin.copy:
+        dest: "{{ pinned_workload_local_stderr }}"
+        mode: "0600"
+        content: "{{ pinned_workload_execution.stderr | default('') }}\n"
+      delegate_to: localhost
+      become: false
+      no_log: true
 
     - name: Inspect declared workload evidence
       ansible.builtin.stat:
@@ -381,6 +405,8 @@
           missing_evidence: "{{ pinned_workload_missing_evidence }}"
           evidence_archive: "{{ pinned_workload_local_archive }}"
           evidence_sha256: "{{ pinned_workload_local_archive_stat.stat.checksum }}"
+          stdout_log: "{{ pinned_workload_local_stdout }}"
+          stderr_log: "{{ pinned_workload_local_stderr }}"
 
     - name: Write pinned workload execution manifest
       ansible.builtin.copy:

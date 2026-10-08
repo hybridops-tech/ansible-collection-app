@@ -10,7 +10,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - Added exact-commit workload execution with protected runtime inputs,
-  fail-closed acceptance and checksummed off-host evidence retention.
+  fail-closed acceptance, protected execution logs and checksummed off-host
+  evidence retention.
 
 ### Fixed
 
