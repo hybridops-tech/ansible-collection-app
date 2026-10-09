@@ -1,0 +1,498 @@
+---
+- name: Resolve effective pinned workload inputs
+  ansible.builtin.set_fact:
+    pinned_workload_effective_action: >-
+      {{ _pinned_workload_action | default(pinned_workload_action, true) }}
+    pinned_workload_effective_controller_evidence_dir: >-
+      {{
+        _pinned_workload_controller_evidence_dir
+        if _pinned_workload_controller_evidence_dir is defined
+        else pinned_workload_controller_evidence_dir
+      }}
+
+- name: Validate pinned workload inputs
+  ansible.builtin.assert:
+    that:
+      - pinned_workload_effective_action in ['execute', 'destroy']
+      - pinned_workload_id is match('^[a-z][a-z0-9_-]{0,62}$')
+      - pinned_workload_checkout_root | trim | length > 0
+      - pinned_workload_owner is match('^[a-z_][a-z0-9_-]{0,31}$')
+      - pinned_workload_timeout_s | int > 0
+      - pinned_workload_arguments is sequence
+      - pinned_workload_arguments is not string
+      - pinned_workload_environment is mapping
+      - pinned_workload_packages is sequence
+      - pinned_workload_packages is not string
+      - pinned_workload_runtime_files is sequence
+      - pinned_workload_runtime_files is not string
+      - pinned_workload_container_image_archives is sequence
+      - pinned_workload_container_image_archives is not string
+      - pinned_workload_container_image_cache_dir | trim | length > 0
+      - pinned_workload_evidence_paths is sequence
+      - pinned_workload_evidence_paths is not string
+      - >-
+        pinned_workload_effective_action == 'destroy' or
+        pinned_workload_repository | trim | length > 0
+      - >-
+        pinned_workload_effective_action == 'destroy' or
+        pinned_workload_repository is match('^(https://|ssh://|git@|file://)')
+      - >-
+        pinned_workload_effective_action == 'destroy' or
+        not (pinned_workload_repository is match('^https?://[^/]+@'))
+      - >-
+        pinned_workload_effective_action == 'destroy' or
+        ('?' not in pinned_workload_repository and '#' not in pinned_workload_repository)
+      - >-
+        pinned_workload_effective_action == 'destroy' or
+        pinned_workload_revision is match('^[0-9a-f]{40}$')
+      - >-
+        pinned_workload_effective_action == 'destroy' or
+        pinned_workload_entrypoint | trim | length > 0
+      - >-
+        pinned_workload_effective_action == 'destroy' or
+        pinned_workload_evidence_paths | length > 0
+      - >-
+        pinned_workload_effective_action == 'destroy' or
+        pinned_workload_effective_controller_evidence_dir | trim | length > 0
+    fail_msg: >-
+      Declare a valid action, workload identifier, owner, exact commit,
+      relative entry point, evidence paths and controller evidence directory.
+
+- name: Validate pinned workload package declarations
+  ansible.builtin.assert:
+    that:
+      - item is string
+      - item is match('^[a-z0-9][a-z0-9+.-]*$')
+    fail_msg: "Pinned workload packages must use valid package names."
+  loop: "{{ pinned_workload_packages }}"
+  when: pinned_workload_effective_action == 'execute'
+
+- name: Validate pinned workload repository path inputs
+  ansible.builtin.assert:
+    that:
+      - not (pinned_workload_entrypoint | regex_search('^/'))
+      - "'..' not in pinned_workload_entrypoint.split('/')"
+      - item | trim | length > 0
+      - not (item | regex_search('^/'))
+      - "'..' not in item.split('/')"
+    fail_msg: >-
+      The entry point and evidence paths must remain within the pinned
+      repository checkout.
+  loop: "{{ pinned_workload_evidence_paths }}"
+  when: pinned_workload_effective_action == 'execute'
+
+- name: Validate protected runtime file declarations
+  ansible.builtin.assert:
+    that:
+      - item is mapping
+      - item.src | default('') | trim | length > 0
+      - item.dest | default('') | trim | length > 0
+      - not (item.dest | regex_search('^/'))
+      - "'..' not in item.dest.split('/')"
+      - item.mode | default('0600') is match('^0[0-7]{3}$')
+    fail_msg: >-
+      Each protected runtime file must declare a controller source, a relative
+      checkout destination and an optional four-digit octal mode.
+  loop: "{{ pinned_workload_runtime_files }}"
+  loop_control:
+    label: "{{ item.dest | default('invalid') }}"
+  when: pinned_workload_effective_action == 'execute'
+  no_log: true
+
+- name: Resolve pinned workload paths
+  ansible.builtin.set_fact:
+    pinned_workload_remote_dir: >-
+      {{ pinned_workload_checkout_root | regex_replace('/+$', '') }}/{{ pinned_workload_id }}
+
+- name: Initialise pinned workload container image state
+  ansible.builtin.set_fact:
+    pinned_workload_container_image_results: []
+  when: pinned_workload_effective_action == 'execute'
+
+- name: Remove pinned workload checkout
+  ansible.builtin.file:
+    path: "{{ pinned_workload_remote_dir }}"
+    state: absent
+  when: pinned_workload_effective_action == 'destroy'
+
+- name: Mark pinned workload removal complete
+  ansible.builtin.set_fact:
+    pinned_workload_result:
+      action: destroy
+      workload_id: "{{ pinned_workload_id }}"
+      remote_dir: "{{ pinned_workload_remote_dir }}"
+      removed: true
+  when: pinned_workload_effective_action == 'destroy'
+
+- name: Execute pinned workload
+  when: pinned_workload_effective_action == 'execute'
+  block:
+    - name: Resolve pinned workload owner home
+      ansible.builtin.getent:
+        database: passwd
+        key: "{{ pinned_workload_owner }}"
+
+    - name: Require pinned workload owner
+      ansible.builtin.assert:
+        that:
+          - pinned_workload_owner in ansible_facts.getent_passwd
+        fail_msg: "Pinned workload owner does not exist: {{ pinned_workload_owner }}"
+
+    - name: Install declared pinned workload packages
+      ansible.builtin.package:
+        name: "{{ pinned_workload_packages }}"
+        state: present
+      when: pinned_workload_packages | length > 0
+
+    - name: Verify Git is available
+      ansible.builtin.command:
+        argv:
+          - git
+          - --version
+      register: pinned_workload_git_version
+      changed_when: false
+
+    - name: Create pinned workload checkout root
+      ansible.builtin.file:
+        path: "{{ pinned_workload_checkout_root }}"
+        state: directory
+        owner: "{{ pinned_workload_owner }}"
+        mode: "0750"
+
+    - name: Reset managed pinned workload checkout
+      ansible.builtin.file:
+        path: "{{ pinned_workload_remote_dir }}"
+        state: absent
+
+    - name: Materialise exact workload commit
+      ansible.builtin.git:
+        repo: "{{ pinned_workload_repository }}"
+        dest: "{{ pinned_workload_remote_dir }}"
+        version: "{{ pinned_workload_revision }}"
+        update: true
+        force: false
+      become: true
+      become_user: "{{ pinned_workload_owner }}"
+
+    - name: Resolve materialised workload commit
+      ansible.builtin.command:
+        argv:
+          - git
+          - -C
+          - "{{ pinned_workload_remote_dir }}"
+          - rev-parse
+          - HEAD
+      register: pinned_workload_resolved_commit
+      changed_when: false
+      become: true
+      become_user: "{{ pinned_workload_owner }}"
+
+    - name: Inspect initial workload tree
+      ansible.builtin.command:
+        argv:
+          - git
+          - -C
+          - "{{ pinned_workload_remote_dir }}"
+          - status
+          - --porcelain
+          - --untracked-files=all
+      register: pinned_workload_initial_status
+      changed_when: false
+      become: true
+      become_user: "{{ pinned_workload_owner }}"
+
+    - name: Verify immutable clean workload checkout
+      ansible.builtin.assert:
+        that:
+          - pinned_workload_resolved_commit.stdout | trim == pinned_workload_revision
+          - pinned_workload_initial_status.stdout | trim | length == 0
+        fail_msg: >-
+          The workload checkout does not resolve to the declared commit or is
+          dirty before protected runtime inputs are staged.
+
+    - name: Inspect protected runtime file sources
+      ansible.builtin.stat:
+        path: "{{ item.src }}"
+        checksum_algorithm: sha256
+      register: pinned_workload_runtime_source_stats
+      delegate_to: localhost
+      become: false
+      loop: "{{ pinned_workload_runtime_files }}"
+      loop_control:
+        label: "{{ item.dest }}"
+      no_log: true
+
+    - name: Require protected runtime file sources
+      ansible.builtin.assert:
+        that:
+          - item.stat.exists
+          - item.stat.isreg
+          - item.stat.checksum | default('') is match('^[0-9a-f]{64}$')
+        fail_msg: "A protected runtime file source is unavailable or unreadable."
+      loop: "{{ pinned_workload_runtime_source_stats.results | default([]) }}"
+      no_log: true
+
+    - name: Create protected runtime file parent directories
+      ansible.builtin.file:
+        path: >-
+          {{ pinned_workload_remote_dir }}/{{ item.dest | dirname }}
+        state: directory
+        owner: "{{ pinned_workload_owner }}"
+        mode: "0700"
+      loop: "{{ pinned_workload_runtime_files }}"
+      loop_control:
+        label: "{{ item.dest }}"
+      no_log: true
+
+    - name: Stage protected runtime files
+      ansible.builtin.copy:
+        src: "{{ item.src }}"
+        dest: "{{ pinned_workload_remote_dir }}/{{ item.dest }}"
+        owner: "{{ pinned_workload_owner }}"
+        mode: "{{ item.mode | default('0600') }}"
+      loop: "{{ pinned_workload_runtime_files }}"
+      loop_control:
+        label: "{{ item.dest }}"
+      no_log: true
+
+    - name: Load declared pinned workload container images
+      ansible.builtin.include_tasks: container-image-archive.yml
+      loop: "{{ pinned_workload_container_image_archives }}"
+      loop_control:
+        loop_var: pinned_workload_container_image_archive
+        label: >-
+          {{ pinned_workload_container_image_archive.images
+             | default([])
+             | map(attribute='image', default='invalid')
+             | join(', ') }}
+
+    - name: Inspect final pinned workload container image set
+      ansible.builtin.command:
+        argv:
+          - docker
+          - image
+          - inspect
+          - --format
+          - "{{ '{{.Id}}' }}"
+          - "{{ item.image }}"
+      register: pinned_workload_container_image_set
+      changed_when: false
+      failed_when: false
+      loop: >-
+        {{ pinned_workload_container_image_results
+           | map(attribute='images')
+           | flatten }}
+      loop_control:
+        label: "{{ item.image }}"
+
+    - name: Verify final pinned workload container image set
+      ansible.builtin.assert:
+        that:
+          - item.rc == 0
+          - item.stdout | trim == item.item.image_id
+        fail_msg: >-
+          A later archive changed a previously verified container image:
+          {{ item.item.image }}
+      loop: "{{ pinned_workload_container_image_set.results }}"
+      loop_control:
+        label: "{{ item.item.image }}"
+
+    - name: Read pinned workload entry point state
+      ansible.builtin.stat:
+        path: "{{ pinned_workload_remote_dir }}/{{ pinned_workload_entrypoint }}"
+      register: pinned_workload_entrypoint_stat
+
+    - name: Require executable pinned workload entry point
+      ansible.builtin.assert:
+        that:
+          - pinned_workload_entrypoint_stat.stat.exists
+          - pinned_workload_entrypoint_stat.stat.isreg
+          - pinned_workload_entrypoint_stat.stat.executable
+        fail_msg: >-
+          The declared workload entry point does not exist or is not executable:
+          {{ pinned_workload_entrypoint }}
+
+    - name: Create controller evidence directory
+      ansible.builtin.file:
+        path: "{{ pinned_workload_effective_controller_evidence_dir }}"
+        state: directory
+        mode: "0700"
+      delegate_to: localhost
+      become: false
+
+    - name: Resolve pinned workload run identity
+      ansible.builtin.set_fact:
+        pinned_workload_run_id: >-
+          {{ now(utc=true, fmt='%Y%m%dT%H%M%SZ') }}-{{ 999999 | random | string }}
+        pinned_workload_started_at: "{{ now(utc=true, fmt='%Y-%m-%dT%H:%M:%SZ') }}"
+
+    - name: Run pinned workload entry point
+      ansible.builtin.command:
+        argv: >-
+          {{ [pinned_workload_remote_dir ~ '/' ~ pinned_workload_entrypoint]
+             + pinned_workload_arguments }}
+        chdir: "{{ pinned_workload_remote_dir }}"
+      environment: "{{ pinned_workload_environment }}"
+      register: pinned_workload_execution
+      changed_when: true
+      failed_when: false
+      become: true
+      become_user: "{{ pinned_workload_owner }}"
+      async: "{{ pinned_workload_timeout_s | int }}"
+      poll: 5
+
+    - name: Resolve pinned workload completion time
+      ansible.builtin.set_fact:
+        pinned_workload_completed_at: "{{ now(utc=true, fmt='%Y-%m-%dT%H:%M:%SZ') }}"
+        pinned_workload_local_stdout: >-
+          {{ (pinned_workload_effective_controller_evidence_dir | regex_replace('/+$', ''))
+             ~ '/' ~ pinned_workload_id ~ '-' ~ pinned_workload_run_id ~ '.stdout.txt' }}
+        pinned_workload_local_stderr: >-
+          {{ (pinned_workload_effective_controller_evidence_dir | regex_replace('/+$', ''))
+             ~ '/' ~ pinned_workload_id ~ '-' ~ pinned_workload_run_id ~ '.stderr.txt' }}
+
+    - name: Retain pinned workload standard output
+      ansible.builtin.copy:
+        dest: "{{ pinned_workload_local_stdout }}"
+        mode: "0600"
+        content: "{{ pinned_workload_execution.stdout | default('') }}\n"
+      delegate_to: localhost
+      become: false
+      no_log: true
+
+    - name: Retain pinned workload standard error
+      ansible.builtin.copy:
+        dest: "{{ pinned_workload_local_stderr }}"
+        mode: "0600"
+        content: "{{ pinned_workload_execution.stderr | default('') }}\n"
+      delegate_to: localhost
+      become: false
+      no_log: true
+
+    - name: Inspect declared workload evidence
+      ansible.builtin.stat:
+        path: "{{ pinned_workload_remote_dir }}/{{ item }}"
+      register: pinned_workload_evidence_stats
+      loop: "{{ pinned_workload_evidence_paths }}"
+      loop_control:
+        label: "{{ item }}"
+
+    - name: Resolve available and missing workload evidence
+      ansible.builtin.set_fact:
+        pinned_workload_available_evidence: >-
+          {{ pinned_workload_evidence_stats.results
+             | selectattr('stat.exists')
+             | map(attribute='item')
+             | list }}
+        pinned_workload_missing_evidence: >-
+          {{ pinned_workload_evidence_stats.results
+             | rejectattr('stat.exists')
+             | map(attribute='item')
+             | list }}
+        pinned_workload_remote_archive: >-
+          /tmp/hyops-{{ pinned_workload_id }}-{{ pinned_workload_run_id }}.tar.gz
+        pinned_workload_local_archive: >-
+          {{ (pinned_workload_effective_controller_evidence_dir | regex_replace('/+$', ''))
+             ~ '/' ~ pinned_workload_id ~ '-' ~ pinned_workload_run_id ~ '.tar.gz' }}
+        pinned_workload_local_manifest: >-
+          {{ (pinned_workload_effective_controller_evidence_dir | regex_replace('/+$', ''))
+             ~ '/' ~ pinned_workload_id ~ '-' ~ pinned_workload_run_id ~ '.json' }}
+
+    - name: Create retained workload evidence archive
+      ansible.builtin.command:
+        argv: >-
+          {{ ['tar', '-C', pinned_workload_remote_dir, '-czf', pinned_workload_remote_archive, '--']
+             + pinned_workload_available_evidence }}
+      when: pinned_workload_available_evidence | length > 0
+      changed_when: true
+
+    - name: Create empty workload evidence archive
+      ansible.builtin.command:
+        argv:
+          - tar
+          - -czf
+          - "{{ pinned_workload_remote_archive }}"
+          - --files-from
+          - /dev/null
+      when: pinned_workload_available_evidence | length == 0
+      changed_when: true
+
+    - name: Retain workload evidence on controller
+      ansible.builtin.fetch:
+        src: "{{ pinned_workload_remote_archive }}"
+        dest: "{{ pinned_workload_local_archive }}"
+        flat: true
+
+    - name: Remove remote workload evidence archive
+      ansible.builtin.file:
+        path: "{{ pinned_workload_remote_archive }}"
+        state: absent
+
+    - name: Inspect retained workload evidence archive
+      ansible.builtin.stat:
+        path: "{{ pinned_workload_local_archive }}"
+        checksum_algorithm: sha256
+      register: pinned_workload_local_archive_stat
+      delegate_to: localhost
+      become: false
+
+    - name: Inspect final workload tree
+      ansible.builtin.command:
+        argv:
+          - git
+          - -C
+          - "{{ pinned_workload_remote_dir }}"
+          - status
+          - --porcelain
+          - --untracked-files=all
+      register: pinned_workload_final_status
+      changed_when: false
+      become: true
+      become_user: "{{ pinned_workload_owner }}"
+
+    - name: Resolve pinned workload result
+      ansible.builtin.set_fact:
+        pinned_workload_result:
+          action: execute
+          workload_id: "{{ pinned_workload_id }}"
+          repository: "{{ pinned_workload_repository }}"
+          revision: "{{ pinned_workload_revision }}"
+          resolved_commit: "{{ pinned_workload_resolved_commit.stdout | trim }}"
+          entrypoint: "{{ pinned_workload_entrypoint }}"
+          arguments: "{{ pinned_workload_arguments }}"
+          exit_code: "{{ pinned_workload_execution.rc | default(-1) | int }}"
+          started_at: "{{ pinned_workload_started_at }}"
+          completed_at: "{{ pinned_workload_completed_at }}"
+          host: "{{ inventory_hostname }}"
+          initial_tree_clean: true
+          final_tree_dirty: >-
+            {{ pinned_workload_final_status.stdout | trim | length > 0 }}
+          declared_evidence: "{{ pinned_workload_evidence_paths }}"
+          retained_evidence: "{{ pinned_workload_available_evidence }}"
+          missing_evidence: "{{ pinned_workload_missing_evidence }}"
+          evidence_archive: "{{ pinned_workload_local_archive }}"
+          evidence_sha256: "{{ pinned_workload_local_archive_stat.stat.checksum }}"
+          stdout_log: "{{ pinned_workload_local_stdout }}"
+          stderr_log: "{{ pinned_workload_local_stderr }}"
+          container_images: "{{ pinned_workload_container_image_results }}"
+
+    - name: Write pinned workload execution manifest
+      ansible.builtin.copy:
+        dest: "{{ pinned_workload_local_manifest }}"
+        mode: "0600"
+        content: "{{ pinned_workload_result | to_nice_json }}\n"
+      delegate_to: localhost
+      become: false
+
+    - name: Enforce pinned workload acceptance boundary
+      ansible.builtin.assert:
+        that:
+          - pinned_workload_execution.rc | default(-1) | int == 0
+          - pinned_workload_missing_evidence | length == 0
+          - pinned_workload_local_archive_stat.stat.exists
+          - pinned_workload_local_archive_stat.stat.isreg
+          - pinned_workload_local_archive_stat.stat.checksum is match('^[0-9a-f]{64}$')
+        fail_msg: >-
+          Pinned workload acceptance failed. The host is retained and available
+          evidence has been copied to
+          {{ pinned_workload_effective_controller_evidence_dir }}.

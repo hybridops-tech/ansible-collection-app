@@ -2,6 +2,8 @@
 containerlab_version: "0.78.0"
 containerlab_install_docker: true
 containerlab_docker_package: docker.io
+containerlab_enable_ipv4_forwarding: true
+containerlab_ipv4_forwarding_sysctl_file: /etc/sysctl.d/99-hybridops-containerlab.conf
 containerlab_post_install_connectivity_wait_s: 90
 containerlab_operator_user: "{{ ansible_user | default(ansible_user_id) }}"
 containerlab_package_dir: /var/cache/hybridops/containerlab

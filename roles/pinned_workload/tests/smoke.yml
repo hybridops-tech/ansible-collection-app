@@ -1,0 +1,272 @@
+---
+- name: Verify pinned workload execution and evidence retention
+  hosts: localhost
+  connection: local
+  become: false
+  gather_facts: false
+
+  vars:
+    test_root: "{{ lookup('env', 'RUNNER_TEMP') | default('/tmp', true) }}/hyops-pinned-workload-test"
+    fixture_repo: "{{ test_root }}/fixture"
+    checkout_root: "{{ test_root }}/checkouts"
+    evidence_root: "{{ test_root }}/evidence"
+    runtime_source: "{{ test_root }}/protected-input"
+    fake_bin: "{{ test_root }}/bin"
+    fake_docker_state: "{{ test_root }}/docker-loaded"
+    container_image_archive: "{{ test_root }}/container-images.tar"
+    expected_container_image_id: >-
+      sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
+
+  environment:
+    PATH: "{{ fake_bin }}:{{ lookup('env', 'PATH') }}"
+    HYOPS_TEST_DOCKER_STATE: "{{ fake_docker_state }}"
+
+  pre_tasks:
+    - name: Reset test workspace
+      ansible.builtin.file:
+        path: "{{ test_root }}"
+        state: absent
+
+    - name: Create fixture directories
+      ansible.builtin.file:
+        path: "{{ item }}"
+        state: directory
+        mode: "0700"
+      loop:
+        - "{{ fixture_repo }}"
+        - "{{ evidence_root }}"
+        - "{{ fake_bin }}"
+
+    - name: Write fake Docker command
+      ansible.builtin.copy:
+        dest: "{{ fake_bin }}/docker"
+        mode: "0755"
+        content: |
+          #!/usr/bin/env bash
+          set -euo pipefail
+          case "$1 $2" in
+            "image inspect")
+              test -f "$HYOPS_TEST_DOCKER_STATE"
+              if [[ "${3:-}" == "--format" ]]; then
+                if grep -qx wrong "$HYOPS_TEST_DOCKER_STATE"; then
+                  printf '%s\n' 'sha256:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff'
+                else
+                  printf '%s\n' '{{ expected_container_image_id }}'
+                fi
+              fi
+              ;;
+            "image load")
+              printf '%s\n' expected > "$HYOPS_TEST_DOCKER_STATE"
+              ;;
+            *)
+              exit 2
+              ;;
+          esac
+
+    - name: Write fixture container image archive
+      ansible.builtin.copy:
+        dest: "{{ container_image_archive }}"
+        mode: "0600"
+        content: "fixture container image archive\n"
+
+    - name: Seed mismatched container image identity
+      ansible.builtin.copy:
+        dest: "{{ fake_docker_state }}"
+        mode: "0600"
+        content: "wrong\n"
+
+    - name: Write successful fixture entry point
+      ansible.builtin.copy:
+        dest: "{{ fixture_repo }}/run.sh"
+        mode: "0755"
+        content: |
+          #!/usr/bin/env bash
+          set -euo pipefail
+          test "$(cat .runtime/input)" = "protected"
+          mkdir -p reports
+          printf '%s\n' 'passed' > reports/result.txt
+          printf '%s\n' 'successful stdout'
+
+    - name: Write protected fixture input
+      ansible.builtin.copy:
+        dest: "{{ runtime_source }}"
+        mode: "0600"
+        content: "protected\n"
+
+    - name: Write failing fixture entry point
+      ansible.builtin.copy:
+        dest: "{{ fixture_repo }}/fail.sh"
+        mode: "0755"
+        content: |
+          #!/usr/bin/env bash
+          set -euo pipefail
+          mkdir -p reports
+          printf '%s\n' 'failed as requested' > reports/failure.txt
+          printf '%s\n' 'failed stdout'
+          printf '%s\n' 'failed stderr' >&2
+          exit 7
+
+    - name: Initialise fixture repository
+      ansible.builtin.command:
+        argv:
+          - git
+          - init
+          - "{{ fixture_repo }}"
+      changed_when: true
+
+    - name: Configure fixture repository identity
+      ansible.builtin.command:
+        argv:
+          - git
+          - -C
+          - "{{ fixture_repo }}"
+          - config
+          - "{{ item.key }}"
+          - "{{ item.value }}"
+      loop:
+        - key: user.name
+          value: HybridOps Test
+        - key: user.email
+          value: test@hybridops.invalid
+      changed_when: true
+
+    - name: Commit fixture workload
+      ansible.builtin.shell: |
+        set -euo pipefail
+        git -C {{ fixture_repo | quote }} add run.sh fail.sh
+        git -C {{ fixture_repo | quote }} commit -m fixture
+      args:
+        executable: /bin/bash
+      changed_when: true
+
+    - name: Resolve fixture commit
+      ansible.builtin.command:
+        argv:
+          - git
+          - -C
+          - "{{ fixture_repo }}"
+          - rev-parse
+          - HEAD
+      register: fixture_commit
+      changed_when: false
+
+  tasks:
+    - name: Execute fixture through pinned workload role
+      ansible.builtin.include_role:
+        name: hybridops.app.pinned_workload
+      vars:
+        pinned_workload_id: acceptance
+        pinned_workload_repository: "file://{{ fixture_repo }}"
+        pinned_workload_revision: "{{ fixture_commit.stdout | trim }}"
+        pinned_workload_checkout_root: "{{ checkout_root }}"
+        pinned_workload_owner: "{{ lookup('env', 'USER') }}"
+        pinned_workload_entrypoint: run.sh
+        pinned_workload_runtime_files:
+          - src: "{{ runtime_source }}"
+            dest: .runtime/input
+        pinned_workload_container_image_cache_dir: "{{ test_root }}/image-cache"
+        pinned_workload_container_image_archives:
+          - path: "{{ container_image_archive }}"
+            images:
+              - image: example/network-device:test
+                image_id: "{{ expected_container_image_id }}"
+        pinned_workload_evidence_paths:
+          - reports
+        pinned_workload_controller_evidence_dir: "{{ evidence_root }}"
+        pinned_workload_timeout_s: 60
+
+    - name: Verify successful pinned workload result
+      ansible.builtin.assert:
+        that:
+          - pinned_workload_result.exit_code | int == 0
+          - pinned_workload_result.resolved_commit == fixture_commit.stdout | trim
+          - pinned_workload_result.missing_evidence | length == 0
+          - pinned_workload_result.evidence_sha256 is match('^[0-9a-f]{64}$')
+          - lookup('file', pinned_workload_result.stdout_log) | trim == 'successful stdout'
+          - lookup('file', pinned_workload_result.stderr_log) | trim == ''
+          - pinned_workload_result.container_images | length == 1
+          - pinned_workload_result.container_images[0].loaded | bool
+          - >-
+            pinned_workload_result.container_images[0].images[0].image_id ==
+            expected_container_image_id
+
+    - name: Inspect retained result
+      ansible.builtin.command:
+        argv:
+          - tar
+          - -xOf
+          - "{{ pinned_workload_result.evidence_archive }}"
+          - reports/result.txt
+      register: retained_result
+      changed_when: false
+
+    - name: Require retained result content
+      ansible.builtin.assert:
+        that:
+          - retained_result.stdout | trim == 'passed'
+
+    - name: Verify failed workload retains available evidence
+      block:
+        - name: Execute failing fixture through pinned workload role
+          ansible.builtin.include_role:
+            name: hybridops.app.pinned_workload
+          vars:
+            pinned_workload_id: acceptance
+            pinned_workload_repository: "file://{{ fixture_repo }}"
+            pinned_workload_revision: "{{ fixture_commit.stdout | trim }}"
+            pinned_workload_checkout_root: "{{ checkout_root }}"
+            pinned_workload_owner: "{{ lookup('env', 'USER') }}"
+            pinned_workload_entrypoint: fail.sh
+            pinned_workload_evidence_paths:
+              - reports
+            pinned_workload_controller_evidence_dir: "{{ evidence_root }}"
+            pinned_workload_timeout_s: 60
+
+        - name: Reject unexpected failed-workload success
+          ansible.builtin.fail:
+            msg: "Failing pinned workload was unexpectedly accepted."
+
+      rescue:
+        - name: Require failed-workload execution evidence
+          ansible.builtin.assert:
+            that:
+              - pinned_workload_result.exit_code | int == 7
+              - pinned_workload_result.retained_evidence == ['reports']
+              - pinned_workload_result.evidence_sha256 is match('^[0-9a-f]{64}$')
+              - lookup('file', pinned_workload_result.stdout_log) | trim == 'failed stdout'
+              - lookup('file', pinned_workload_result.stderr_log) | trim == 'failed stderr'
+
+        - name: Inspect retained failed-workload result
+          ansible.builtin.command:
+            argv:
+              - tar
+              - -xOf
+              - "{{ pinned_workload_result.evidence_archive }}"
+              - reports/failure.txt
+          register: retained_failure
+          changed_when: false
+
+        - name: Require retained failed-workload result content
+          ansible.builtin.assert:
+            that:
+              - retained_failure.stdout | trim == 'failed as requested'
+
+    - name: Remove fixture checkout through pinned workload role
+      ansible.builtin.include_role:
+        name: hybridops.app.pinned_workload
+      vars:
+        pinned_workload_action: execute
+        _pinned_workload_action: destroy
+        pinned_workload_id: acceptance
+        pinned_workload_checkout_root: "{{ checkout_root }}"
+        pinned_workload_owner: "{{ lookup('env', 'USER') }}"
+
+    - name: Inspect removed fixture checkout
+      ansible.builtin.stat:
+        path: "{{ checkout_root }}/acceptance"
+      register: removed_checkout
+
+    - name: Require fixture checkout removal
+      ansible.builtin.assert:
+        that:
+          - not removed_checkout.stat.exists

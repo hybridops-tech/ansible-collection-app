@@ -1,0 +1,187 @@
+---
+- name: Validate pinned workload container image archive
+  ansible.builtin.assert:
+    that:
+      - pinned_workload_container_image_archive is mapping
+      - >-
+        pinned_workload_container_image_archive.path | default('') | string | trim
+        | length > 0
+      - >-
+        pinned_workload_container_image_archive.path | default('') | string
+        is match('^/')
+      - >-
+        pinned_workload_container_image_archive.sha256 | default('') | string
+        | length == 0 or
+        pinned_workload_container_image_archive.sha256 | string
+        is match('^[0-9a-f]{64}$')
+      - pinned_workload_container_image_archive.images | default([]) is sequence
+      - pinned_workload_container_image_archive.images | default([]) is not string
+      - pinned_workload_container_image_archive.images | default([]) | length > 0
+    fail_msg: >-
+      Each container image archive requires an absolute controller path,
+      optional SHA-256 digest and at least one expected image.
+  delegate_to: localhost
+  become: false
+
+- name: Validate pinned workload container image identities
+  ansible.builtin.assert:
+    that:
+      - item is mapping
+      - item.image | default('') | string | trim | length > 0
+      - >-
+        item.image_id | default('') | string | length == 0 or
+        item.image_id | string is match('^sha256:[0-9a-f]{64}$')
+    fail_msg: >-
+      Each expected container image requires an image reference and may declare
+      one sha256-prefixed image ID.
+  loop: "{{ pinned_workload_container_image_archive.images }}"
+  loop_control:
+    label: "{{ item.image | default('invalid') }}"
+  delegate_to: localhost
+  become: false
+
+- name: Inspect pinned workload container image archive
+  ansible.builtin.stat:
+    path: "{{ pinned_workload_container_image_archive.path }}"
+    checksum_algorithm: sha256
+  register: pinned_workload_container_image_archive_state
+  delegate_to: localhost
+  become: false
+
+- name: Verify pinned workload container image archive
+  ansible.builtin.assert:
+    that:
+      - pinned_workload_container_image_archive_state.stat.exists
+      - pinned_workload_container_image_archive_state.stat.isreg
+      - >-
+        pinned_workload_container_image_archive.sha256 | default('') | length == 0 or
+        pinned_workload_container_image_archive_state.stat.checksum ==
+        pinned_workload_container_image_archive.sha256
+    fail_msg: >-
+      The declared container image archive is missing, unreadable or does not
+      match its SHA-256 digest.
+  delegate_to: localhost
+  become: false
+
+- name: Inspect expected pinned workload container images
+  ansible.builtin.command:
+    argv:
+      - docker
+      - image
+      - inspect
+      - --format
+      - "{{ '{{.Id}}' }}"
+      - "{{ item.image }}"
+  register: pinned_workload_container_image_initial
+  changed_when: false
+  failed_when: false
+  loop: "{{ pinned_workload_container_image_archive.images }}"
+  loop_control:
+    label: "{{ item.image }}"
+
+- name: Resolve pinned workload container image load requirement
+  ansible.builtin.set_fact:
+    pinned_workload_container_image_archive_required: false
+    pinned_workload_container_image_staged_path: >-
+      {{ pinned_workload_container_image_cache_dir | regex_replace('/+$', '')
+         }}/{{ pinned_workload_container_image_archive_state.stat.checksum }}.tar
+
+- name: Detect missing or mismatched pinned workload container images
+  ansible.builtin.set_fact:
+    pinned_workload_container_image_archive_required: >-
+      {{
+        pinned_workload_container_image_archive_required | bool or
+        item.rc != 0 or
+        (
+          item.item.image_id | default('') | length > 0 and
+          item.stdout | trim != item.item.image_id
+        )
+      }}
+  loop: "{{ pinned_workload_container_image_initial.results }}"
+  loop_control:
+    label: "{{ item.item.image }}"
+
+- name: Load missing pinned workload container images
+  when: pinned_workload_container_image_archive_required | bool
+  block:
+    - name: Create pinned workload container image cache
+      ansible.builtin.file:
+        path: "{{ pinned_workload_container_image_cache_dir }}"
+        state: directory
+        mode: "0700"
+
+    - name: Stage pinned workload container image archive
+      ansible.builtin.copy:
+        src: "{{ pinned_workload_container_image_archive.path }}"
+        dest: "{{ pinned_workload_container_image_staged_path }}"
+        mode: "0600"
+
+    - name: Load pinned workload container image archive
+      ansible.builtin.command:
+        argv:
+          - docker
+          - image
+          - load
+          - --input
+          - "{{ pinned_workload_container_image_staged_path }}"
+      changed_when: true
+
+  always:
+    - name: Remove staged pinned workload container image archive
+      ansible.builtin.file:
+        path: "{{ pinned_workload_container_image_staged_path }}"
+        state: absent
+
+- name: Inspect final pinned workload container image identities
+  ansible.builtin.command:
+    argv:
+      - docker
+      - image
+      - inspect
+      - --format
+      - "{{ '{{.Id}}' }}"
+      - "{{ item.image }}"
+  register: pinned_workload_container_image_final
+  changed_when: false
+  failed_when: false
+  loop: "{{ pinned_workload_container_image_archive.images }}"
+  loop_control:
+    label: "{{ item.image }}"
+
+- name: Verify final pinned workload container image identities
+  ansible.builtin.assert:
+    that:
+      - item.rc == 0
+      - item.stdout | trim is match('^sha256:[0-9a-f]{64}$')
+      - >-
+        item.item.image_id | default('') | length == 0 or
+        item.stdout | trim == item.item.image_id
+    fail_msg: >-
+      A declared container image is unavailable or does not match its expected
+      image ID: {{ item.item.image }}
+  loop: "{{ pinned_workload_container_image_final.results }}"
+  loop_control:
+    label: "{{ item.item.image }}"
+
+- name: Resolve pinned workload container image archive result
+  ansible.builtin.set_fact:
+    pinned_workload_current_container_images: []
+
+- name: Record pinned workload container image identity
+  ansible.builtin.set_fact:
+    pinned_workload_current_container_images: >-
+      {{ pinned_workload_current_container_images
+         + [{'image': item.item.image, 'image_id': item.stdout | trim}] }}
+  loop: "{{ pinned_workload_container_image_final.results }}"
+  loop_control:
+    label: "{{ item.item.image }}"
+
+- name: Record pinned workload container image archive
+  ansible.builtin.set_fact:
+    pinned_workload_container_image_results: >-
+      {{ pinned_workload_container_image_results
+         + [{
+           'archive_sha256': pinned_workload_container_image_archive_state.stat.checksum,
+           'images': pinned_workload_current_container_images,
+           'loaded': pinned_workload_container_image_archive_required | bool
+         }] }}
