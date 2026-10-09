@@ -19,6 +19,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Rejected exact, parent, child and symbolic-link overlap between protected
+  pinned-workload runtime files and retained evidence.
 - Persisted IPv4 forwarding on managed Containerlab hosts so later sysctl
   reloads do not disable Docker bridge egress.
 

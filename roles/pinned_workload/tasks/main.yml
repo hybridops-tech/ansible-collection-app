@@ -72,12 +72,18 @@
     that:
       - not (pinned_workload_entrypoint | regex_search('^/'))
       - "'..' not in pinned_workload_entrypoint.split('/')"
+      - "'' not in pinned_workload_entrypoint.split('/')"
+      - "'.' not in pinned_workload_entrypoint.split('/')"
+      - item is string
+      - item == item | trim
       - item | trim | length > 0
       - not (item | regex_search('^/'))
       - "'..' not in item.split('/')"
+      - "'' not in item.split('/')"
+      - "item == '.' or '.' not in item.split('/')"
     fail_msg: >-
-      The entry point and evidence paths must remain within the pinned
-      repository checkout.
+      The entry point and evidence paths must be canonical relative paths
+      within the pinned repository checkout.
   loop: "{{ pinned_workload_evidence_paths }}"
   when: pinned_workload_effective_action == 'execute'
 
@@ -87,8 +93,11 @@
       - item is mapping
       - item.src | default('') | trim | length > 0
       - item.dest | default('') | trim | length > 0
+      - item.dest == item.dest | trim
       - not (item.dest | regex_search('^/'))
       - "'..' not in item.dest.split('/')"
+      - "'' not in item.dest.split('/')"
+      - "'.' not in item.dest.split('/')"
       - item.mode | default('0600') is match('^0[0-7]{3}$')
     fail_msg: >-
       Each protected runtime file must declare a controller source, a relative
@@ -97,7 +106,25 @@
   loop_control:
     label: "{{ item.dest | default('invalid') }}"
   when: pinned_workload_effective_action == 'execute'
-  no_log: true
+
+- name: Separate protected runtime files from retained evidence
+  ansible.builtin.assert:
+    that:
+      - item.1 != '.'
+      - item.0 != item.1
+      - not (item.0 | regex_search('^' ~ (item.1 | regex_escape) ~ '/'))
+      - not (item.1 | regex_search('^' ~ (item.0 | regex_escape) ~ '/'))
+    fail_msg: >-
+      Protected runtime destination '{{ item.0 }}' overlaps retained evidence
+      path '{{ item.1 }}'.
+  loop: >-
+    {{ pinned_workload_runtime_files
+       | map(attribute='dest')
+       | product(pinned_workload_evidence_paths)
+       | list }}
+  loop_control:
+    label: "{{ item.0 }} <> {{ item.1 }}"
+  when: pinned_workload_effective_action == 'execute'
 
 - name: Resolve pinned workload paths
   ansible.builtin.set_fact:
@@ -209,6 +236,44 @@
         fail_msg: >-
           The workload checkout does not resolve to the declared commit or is
           dirty before protected runtime inputs are staged.
+
+    - name: Resolve pinned workload checkout path
+      ansible.builtin.command:
+        argv:
+          - realpath
+          - --canonicalize-missing
+          - --
+          - "{{ pinned_workload_remote_dir }}"
+      register: pinned_workload_resolved_remote_dir
+      changed_when: false
+
+    - name: Resolve protected runtime destination paths
+      ansible.builtin.command:
+        argv:
+          - realpath
+          - --canonicalize-missing
+          - --
+          - "{{ pinned_workload_remote_dir }}/{{ item }}"
+      register: pinned_workload_resolved_runtime_destinations
+      changed_when: false
+      loop: >-
+        {{ pinned_workload_runtime_files | map(attribute='dest') | list }}
+      loop_control:
+        label: "{{ item }}"
+
+    - name: Require canonical protected runtime destination paths
+      ansible.builtin.assert:
+        that:
+          - >-
+            item.stdout | trim ==
+            (pinned_workload_resolved_remote_dir.stdout | trim) ~ '/' ~ item.item
+        fail_msg: >-
+          Protected runtime destination '{{ item.item }}' resolves through a
+          symbolic link in the workload checkout.
+      loop: >-
+        {{ pinned_workload_resolved_runtime_destinations.results | default([]) }}
+      loop_control:
+        label: "{{ item.item }}"
 
     - name: Inspect protected runtime file sources
       ansible.builtin.stat:
@@ -350,6 +415,36 @@
         pinned_workload_local_stderr: >-
           {{ (pinned_workload_effective_controller_evidence_dir | regex_replace('/+$', ''))
              ~ '/' ~ pinned_workload_id ~ '-' ~ pinned_workload_run_id ~ '.stderr.txt' }}
+
+    - name: Resolve declared workload evidence paths
+      ansible.builtin.command:
+        argv:
+          - realpath
+          - --canonicalize-missing
+          - --
+          - "{{ pinned_workload_remote_dir }}/{{ item }}"
+      register: pinned_workload_resolved_evidence_paths
+      changed_when: false
+      loop: "{{ pinned_workload_evidence_paths }}"
+      loop_control:
+        label: "{{ item }}"
+
+    - name: Require canonical retained evidence paths
+      ansible.builtin.assert:
+        that:
+          - >-
+            item.stdout | trim ==
+            (
+              (pinned_workload_resolved_remote_dir.stdout | trim)
+              if item.item == '.'
+              else (pinned_workload_resolved_remote_dir.stdout | trim) ~ '/' ~ item.item
+            )
+        fail_msg: >-
+          Retained evidence path '{{ item.item }}' resolves through a symbolic
+          link in the workload checkout.
+      loop: "{{ pinned_workload_resolved_evidence_paths.results }}"
+      loop_control:
+        label: "{{ item.item }}"
 
     - name: Retain pinned workload standard output
       ansible.builtin.copy:

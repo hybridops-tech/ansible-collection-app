@@ -106,6 +106,15 @@
           printf '%s\n' 'failed stderr' >&2
           exit 7
 
+    - name: Write evidence-link fixture entry point
+      ansible.builtin.copy:
+        dest: "{{ fixture_repo }}/link-evidence.sh"
+        mode: "0755"
+        content: |
+          #!/usr/bin/env bash
+          set -euo pipefail
+          ln -s .runtime reports
+
     - name: Initialise fixture repository
       ansible.builtin.command:
         argv:
@@ -133,7 +142,7 @@
     - name: Commit fixture workload
       ansible.builtin.shell: |
         set -euo pipefail
-        git -C {{ fixture_repo | quote }} add run.sh fail.sh
+        git -C {{ fixture_repo | quote }} add run.sh fail.sh link-evidence.sh
         git -C {{ fixture_repo | quote }} commit -m fixture
       args:
         executable: /bin/bash
@@ -148,6 +157,34 @@
           - rev-parse
           - HEAD
       register: fixture_commit
+      changed_when: false
+
+    - name: Add protected-path symlink fixture
+      ansible.builtin.file:
+        src: reports
+        dest: "{{ fixture_repo }}/.runtime"
+        state: link
+        force: true
+        follow: false
+
+    - name: Commit protected-path symlink fixture
+      ansible.builtin.shell: |
+        set -euo pipefail
+        git -C {{ fixture_repo | quote }} add .runtime
+        git -C {{ fixture_repo | quote }} commit -m symlink-fixture
+      args:
+        executable: /bin/bash
+      changed_when: true
+
+    - name: Resolve protected-path symlink fixture commit
+      ansible.builtin.command:
+        argv:
+          - git
+          - -C
+          - "{{ fixture_repo }}"
+          - rev-parse
+          - HEAD
+      register: symlink_fixture_commit
       changed_when: false
 
   tasks:
@@ -204,6 +241,104 @@
       ansible.builtin.assert:
         that:
           - retained_result.stdout | trim == 'passed'
+
+    - name: Inspect retained archive members
+      ansible.builtin.command:
+        argv:
+          - tar
+          - -tzf
+          - "{{ pinned_workload_result.evidence_archive }}"
+      register: retained_members
+      changed_when: false
+
+    - name: Require protected runtime file exclusion
+      ansible.builtin.assert:
+        that:
+          - "'reports/result.txt' in retained_members.stdout_lines"
+          - "'.runtime/input' not in retained_members.stdout_lines"
+
+    - name: Verify protected runtime and evidence path separation
+      ansible.builtin.include_tasks: path-overlap-case.yml
+      loop:
+        - name: parent
+          runtime_path: .runtime/input
+          evidence_path: .runtime
+        - name: child
+          runtime_path: reports
+          evidence_path: reports/result.txt
+        - name: exact
+          runtime_path: .runtime/input
+          evidence_path: .runtime/input
+        - name: checkout-root
+          runtime_path: .runtime/input
+          evidence_path: .
+      loop_control:
+        loop_var: overlap_case
+        label: "{{ overlap_case.name }}"
+
+    - name: Verify protected runtime path symlink rejection
+      block:
+        - name: Execute protected-path symlink fixture
+          ansible.builtin.include_role:
+            name: hybridops.app.pinned_workload
+          vars:
+            pinned_workload_id: symlink-runtime
+            pinned_workload_repository: "file://{{ fixture_repo }}"
+            pinned_workload_revision: "{{ symlink_fixture_commit.stdout | trim }}"
+            pinned_workload_checkout_root: "{{ checkout_root }}"
+            pinned_workload_owner: "{{ lookup('env', 'USER') }}"
+            pinned_workload_entrypoint: run.sh
+            pinned_workload_runtime_files:
+              - src: "{{ runtime_source }}"
+                dest: .runtime/input
+            pinned_workload_evidence_paths:
+              - reports
+            pinned_workload_controller_evidence_dir: "{{ evidence_root }}"
+            pinned_workload_timeout_s: 60
+
+        - name: Reject unexpected protected-path symlink success
+          ansible.builtin.fail:
+            msg: "Protected-path symlink was unexpectedly accepted."
+
+      rescue:
+        - name: Require protected-path symlink rejection
+          ansible.builtin.assert:
+            that:
+              - >-
+                ansible_failed_task.name ==
+                'Require canonical protected runtime destination paths'
+
+    - name: Verify retained evidence path symlink rejection
+      block:
+        - name: Execute evidence-path symlink fixture
+          ansible.builtin.include_role:
+            name: hybridops.app.pinned_workload
+          vars:
+            pinned_workload_id: symlink-evidence
+            pinned_workload_repository: "file://{{ fixture_repo }}"
+            pinned_workload_revision: "{{ fixture_commit.stdout | trim }}"
+            pinned_workload_checkout_root: "{{ checkout_root }}"
+            pinned_workload_owner: "{{ lookup('env', 'USER') }}"
+            pinned_workload_entrypoint: link-evidence.sh
+            pinned_workload_runtime_files:
+              - src: "{{ runtime_source }}"
+                dest: .runtime/input
+            pinned_workload_evidence_paths:
+              - reports/input
+            pinned_workload_controller_evidence_dir: "{{ evidence_root }}"
+            pinned_workload_timeout_s: 60
+
+        - name: Reject unexpected evidence-path symlink success
+          ansible.builtin.fail:
+            msg: "Evidence-path symlink was unexpectedly accepted."
+
+      rescue:
+        - name: Require evidence-path symlink rejection
+          ansible.builtin.assert:
+            that:
+              - >-
+                ansible_failed_task.name ==
+                'Require canonical retained evidence paths'
 
     - name: Verify failed workload retains available evidence
       block:

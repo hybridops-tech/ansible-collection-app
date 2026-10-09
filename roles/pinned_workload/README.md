@@ -19,7 +19,9 @@ Required inputs:
 
 `pinned_workload_runtime_files` accepts controller-side files that must be
 staged before execution. Each item declares `src`, `dest` and an optional
-`mode`. Contents are not logged.
+`mode`. Contents are not logged. Protected destinations and evidence paths
+must not have exact, parent or child relationships. Symbolic-link indirection
+is rejected before protected files are staged or evidence is retained.
 
 `pinned_workload_packages` installs explicitly declared host packages before
 the pinned entry point runs.
