@@ -20,3 +20,11 @@ Required inputs:
 `pinned_workload_runtime_files` accepts controller-side files that must be
 staged before execution. Each item declares `src`, `dest` and an optional
 `mode`. Contents are not logged.
+
+`pinned_workload_packages` installs explicitly declared host packages before
+the pinned entry point runs.
+
+`pinned_workload_container_image_archives` loads checksummed, operator-supplied
+Docker archives before execution. Each archive declares its expected image
+references and may require exact image IDs. Archive paths and contents are not
+written to the execution manifest.

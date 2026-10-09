@@ -21,8 +21,13 @@
       - pinned_workload_arguments is sequence
       - pinned_workload_arguments is not string
       - pinned_workload_environment is mapping
+      - pinned_workload_packages is sequence
+      - pinned_workload_packages is not string
       - pinned_workload_runtime_files is sequence
       - pinned_workload_runtime_files is not string
+      - pinned_workload_container_image_archives is sequence
+      - pinned_workload_container_image_archives is not string
+      - pinned_workload_container_image_cache_dir | trim | length > 0
       - pinned_workload_evidence_paths is sequence
       - pinned_workload_evidence_paths is not string
       - >-
@@ -52,6 +57,15 @@
     fail_msg: >-
       Declare a valid action, workload identifier, owner, exact commit,
       relative entry point, evidence paths and controller evidence directory.
+
+- name: Validate pinned workload package declarations
+  ansible.builtin.assert:
+    that:
+      - item is string
+      - item is match('^[a-z0-9][a-z0-9+.-]*$')
+    fail_msg: "Pinned workload packages must use valid package names."
+  loop: "{{ pinned_workload_packages }}"
+  when: pinned_workload_effective_action == 'execute'
 
 - name: Validate pinned workload repository path inputs
   ansible.builtin.assert:
@@ -90,6 +104,11 @@
     pinned_workload_remote_dir: >-
       {{ pinned_workload_checkout_root | regex_replace('/+$', '') }}/{{ pinned_workload_id }}
 
+- name: Initialise pinned workload container image state
+  ansible.builtin.set_fact:
+    pinned_workload_container_image_results: []
+  when: pinned_workload_effective_action == 'execute'
+
 - name: Remove pinned workload checkout
   ansible.builtin.file:
     path: "{{ pinned_workload_remote_dir }}"
@@ -118,6 +137,12 @@
         that:
           - pinned_workload_owner in ansible_facts.getent_passwd
         fail_msg: "Pinned workload owner does not exist: {{ pinned_workload_owner }}"
+
+    - name: Install declared pinned workload packages
+      ansible.builtin.package:
+        name: "{{ pinned_workload_packages }}"
+        state: present
+      when: pinned_workload_packages | length > 0
 
     - name: Verify Git is available
       ansible.builtin.command:
@@ -229,6 +254,48 @@
       loop_control:
         label: "{{ item.dest }}"
       no_log: true
+
+    - name: Load declared pinned workload container images
+      ansible.builtin.include_tasks: container-image-archive.yml
+      loop: "{{ pinned_workload_container_image_archives }}"
+      loop_control:
+        loop_var: pinned_workload_container_image_archive
+        label: >-
+          {{ pinned_workload_container_image_archive.images
+             | default([])
+             | map(attribute='image', default='invalid')
+             | join(', ') }}
+
+    - name: Inspect final pinned workload container image set
+      ansible.builtin.command:
+        argv:
+          - docker
+          - image
+          - inspect
+          - --format
+          - "{{ '{{.Id}}' }}"
+          - "{{ item.image }}"
+      register: pinned_workload_container_image_set
+      changed_when: false
+      failed_when: false
+      loop: >-
+        {{ pinned_workload_container_image_results
+           | map(attribute='images')
+           | flatten }}
+      loop_control:
+        label: "{{ item.image }}"
+
+    - name: Verify final pinned workload container image set
+      ansible.builtin.assert:
+        that:
+          - item.rc == 0
+          - item.stdout | trim == item.item.image_id
+        fail_msg: >-
+          A later archive changed a previously verified container image:
+          {{ item.item.image }}
+      loop: "{{ pinned_workload_container_image_set.results }}"
+      loop_control:
+        label: "{{ item.item.image }}"
 
     - name: Read pinned workload entry point state
       ansible.builtin.stat:
@@ -407,6 +474,7 @@
           evidence_sha256: "{{ pinned_workload_local_archive_stat.stat.checksum }}"
           stdout_log: "{{ pinned_workload_local_stdout }}"
           stderr_log: "{{ pinned_workload_local_stderr }}"
+          container_images: "{{ pinned_workload_container_image_results }}"
 
     - name: Write pinned workload execution manifest
       ansible.builtin.copy:
