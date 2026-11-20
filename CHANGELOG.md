@@ -19,6 +19,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Rejected special files and setuid, setgid or sticky modes in Containerlab
+  recovery archives.
+- Cleared import staging before extraction and required explicit overwrite of
+  existing native lab state.
+- Published topology checksums for imported recovery sets and fixed exports
+  with configuration saving disabled.
 - Rejected exact, parent, child and symbolic-link overlap between protected
   pinned-workload runtime files and retained evidence.
 - Persisted IPv4 forwarding on managed Containerlab hosts so later sysctl

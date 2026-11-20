@@ -99,6 +99,63 @@
           - containerlab_recovery_result.safe_for_host_destroy | bool
           - test_sha256 is match('^[0-9a-f]{64}$')
 
+    - name: Export recovery set without native configuration save
+      ansible.builtin.include_role:
+        name: hybridops.app.containerlab_recovery
+      vars:
+        _containerlab_recovery_action: export
+        _containerlab_recovery_topology_path: "{{ test_source }}/lab.clab.yml"
+        _containerlab_recovery_controller_dir: "{{ test_controller }}/no-config-save"
+        containerlab_recovery_mode: rebuild
+        containerlab_recovery_source_root: "{{ test_source }}"
+        containerlab_recovery_topology_relpath: lab.clab.yml
+        containerlab_recovery_remote_root: "{{ test_remote }}/no-config-save"
+        containerlab_recovery_labdir_base: "{{ test_labdirs }}"
+        containerlab_recovery_save_configs: false
+        containerlab_recovery_include_lab_dir: false
+
+    - name: Require verified export without native configuration save
+      ansible.builtin.assert:
+        that:
+          - containerlab_recovery_result.action == 'export'
+          - containerlab_recovery_result.safe_for_host_destroy | bool
+          - containerlab_recovery_result.sha256 is match('^[0-9a-f]{64}$')
+
+    - name: Initialise checksum mismatch result
+      ansible.builtin.set_fact:
+        test_checksum_mismatch_rejected: false
+        test_checksum_mismatch_diagnostic: ""
+
+    - name: Exercise checksum mismatch rejection
+      block:
+        - name: Import recovery archive with the wrong checksum
+          ansible.builtin.include_role:
+            name: hybridops.app.containerlab_recovery
+          vars:
+            _containerlab_recovery_action: import
+            containerlab_recovery_archive_path: "{{ test_archive }}"
+            containerlab_recovery_expected_sha256: >-
+              {{ '0' * 64 }}
+            containerlab_recovery_remote_root: >-
+              {{ test_remote }}/checksum-mismatch
+            containerlab_recovery_labdir_base: "{{ test_labdirs }}"
+            containerlab_recovery_overwrite: true
+
+      rescue:
+        - name: Record checksum mismatch rejection
+          ansible.builtin.set_fact:
+            test_checksum_mismatch_rejected: true
+            test_checksum_mismatch_diagnostic: >-
+              {{ ansible_failed_result | to_json }}
+
+    - name: Require checksum mismatch rejection
+      ansible.builtin.assert:
+        that:
+          - test_checksum_mismatch_rejected | bool
+          - >-
+            'checksum does not match' in
+            test_checksum_mismatch_diagnostic
+
     - name: Import test recovery set
       ansible.builtin.include_role:
         name: hybridops.app.containerlab_recovery
@@ -140,6 +197,9 @@
         that:
           - containerlab_recovery_result.action == 'import'
           - containerlab_recovery_result.mode == 'rebuild'
+          - >-
+            containerlab_recovery_result.topology_sha256 ==
+            test_restored_topology.stat.checksum
           - test_restored_topology.stat.isreg
           - containerlab_recovery_result.lab_directory_restored | bool
           - test_restored_saved_config.stat.isreg
@@ -151,6 +211,48 @@
             test_restored_native_state.content | b64decode ==
             'hybridops-containerlab-recovery-test\n'
           - containerlab_recovery_result.image_refs == ['ghcr.io/nokia/srlinux:latest']
+
+    - name: Initialise native lab overwrite result
+      ansible.builtin.set_fact:
+        test_native_lab_overwrite_rejected: false
+        test_native_lab_overwrite_diagnostic: ""
+
+    - name: Exercise native lab overwrite rejection
+      block:
+        - name: Import recovery archive without overwrite approval
+          ansible.builtin.include_role:
+            name: hybridops.app.containerlab_recovery
+          vars:
+            _containerlab_recovery_action: import
+            containerlab_recovery_archive_path: "{{ test_archive }}"
+            containerlab_recovery_expected_sha256: "{{ test_sha256 }}"
+            containerlab_recovery_remote_root: >-
+              {{ test_remote }}/overwrite-refusal
+            containerlab_recovery_labdir_base: "{{ test_labdirs }}"
+            containerlab_recovery_overwrite: false
+
+      rescue:
+        - name: Record native lab overwrite rejection
+          ansible.builtin.set_fact:
+            test_native_lab_overwrite_rejected: true
+            test_native_lab_overwrite_diagnostic: >-
+              {{ ansible_failed_result | to_json }}
+
+    - name: Read native state after overwrite rejection
+      ansible.builtin.slurp:
+        src: "{{ test_labdirs }}/clab-recovery-test/r1/nvram_00001"
+      register: test_native_state_after_overwrite_rejection
+
+    - name: Require native lab overwrite rejection
+      ansible.builtin.assert:
+        that:
+          - test_native_lab_overwrite_rejected | bool
+          - >-
+            'containerlab_recovery_overwrite is disabled' in
+            test_native_lab_overwrite_diagnostic
+          - >-
+            test_native_state_after_overwrite_rejection.content | b64decode ==
+            'hybridops-containerlab-recovery-test\n'
 
     - name: Install unsafe saved-configuration test command
       ansible.builtin.copy:
@@ -212,6 +314,171 @@
           - >-
             'outside its configuration directory' in
             test_unsafe_saved_config_diagnostic
+
+    - name: Create unsafe archive fixture directory
+      ansible.builtin.file:
+        path: "{{ test_root }}/unsafe-archive/recovery-bundle"
+        state: directory
+        mode: "0750"
+
+    - name: Write unsafe archive manifest fixture
+      ansible.builtin.copy:
+        dest: >-
+          {{ test_root
+             }}/unsafe-archive/recovery-bundle/hybridops-recovery-manifest.json
+        mode: "0640"
+        content: "{}\n"
+
+    - name: Create unsafe archive FIFO member
+      ansible.builtin.command:
+        argv:
+          - mkfifo
+          - "{{ test_root }}/unsafe-archive/recovery-bundle/blocked.fifo"
+        creates: "{{ test_root }}/unsafe-archive/recovery-bundle/blocked.fifo"
+
+    - name: Build unsafe archive fixture
+      ansible.builtin.command:
+        argv:
+          - tar
+          - -czf
+          - "{{ test_root }}/unsafe-archive.tar.gz"
+          - -C
+          - "{{ test_root }}/unsafe-archive"
+          - recovery-bundle
+        creates: "{{ test_root }}/unsafe-archive.tar.gz"
+
+    - name: Read unsafe archive checksum
+      ansible.builtin.stat:
+        path: "{{ test_root }}/unsafe-archive.tar.gz"
+        checksum_algorithm: sha256
+      register: test_unsafe_archive_stat
+
+    - name: Initialise unsafe archive result
+      ansible.builtin.set_fact:
+        test_unsafe_archive_rejected: false
+        test_unsafe_archive_diagnostic: ""
+
+    - name: Create stale import directory
+      ansible.builtin.file:
+        path: "{{ test_remote }}/unsafe-import/import"
+        state: directory
+        mode: "0750"
+
+    - name: Create stale import marker
+      ansible.builtin.copy:
+        dest: "{{ test_remote }}/unsafe-import/import/stale-marker"
+        mode: "0640"
+        content: "stale\n"
+
+    - name: Exercise unsafe archive rejection
+      block:
+        - name: Import recovery archive containing a FIFO
+          ansible.builtin.include_role:
+            name: hybridops.app.containerlab_recovery
+          vars:
+            _containerlab_recovery_action: import
+            containerlab_recovery_archive_path: >-
+              {{ test_root }}/unsafe-archive.tar.gz
+            containerlab_recovery_expected_sha256: >-
+              {{ test_unsafe_archive_stat.stat.checksum }}
+            containerlab_recovery_remote_root: >-
+              {{ test_remote }}/unsafe-import
+            containerlab_recovery_labdir_base: "{{ test_labdirs }}"
+            containerlab_recovery_overwrite: true
+
+      rescue:
+        - name: Record unsafe archive rejection
+          ansible.builtin.set_fact:
+            test_unsafe_archive_rejected: true
+            test_unsafe_archive_diagnostic: >-
+              {{ ansible_failed_result | to_json }}
+
+    - name: Read stale import marker state
+      ansible.builtin.stat:
+        path: "{{ test_remote }}/unsafe-import/import/stale-marker"
+      register: test_stale_import_marker
+
+    - name: Require unsafe archive rejection
+      ansible.builtin.assert:
+        that:
+          - test_unsafe_archive_rejected | bool
+          - >-
+            'structurally unsafe or incomplete' in
+            test_unsafe_archive_diagnostic
+          - not test_stale_import_marker.stat.exists
+
+    - name: Create privileged-mode archive fixture directory
+      ansible.builtin.file:
+        path: "{{ test_root }}/privileged-archive/recovery-bundle"
+        state: directory
+        mode: "0750"
+
+    - name: Write privileged-mode archive manifest fixture
+      ansible.builtin.copy:
+        dest: >-
+          {{ test_root
+             }}/privileged-archive/recovery-bundle/hybridops-recovery-manifest.json
+        mode: "0640"
+        content: "{}\n"
+
+    - name: Write privileged-mode archive member
+      ansible.builtin.copy:
+        dest: "{{ test_root }}/privileged-archive/recovery-bundle/blocked"
+        mode: "4750"
+        content: "blocked\n"
+
+    - name: Build privileged-mode archive fixture
+      ansible.builtin.command:
+        argv:
+          - tar
+          - -czf
+          - "{{ test_root }}/privileged-archive.tar.gz"
+          - -C
+          - "{{ test_root }}/privileged-archive"
+          - recovery-bundle
+        creates: "{{ test_root }}/privileged-archive.tar.gz"
+
+    - name: Read privileged-mode archive checksum
+      ansible.builtin.stat:
+        path: "{{ test_root }}/privileged-archive.tar.gz"
+        checksum_algorithm: sha256
+      register: test_privileged_archive_stat
+
+    - name: Initialise privileged-mode archive result
+      ansible.builtin.set_fact:
+        test_privileged_archive_rejected: false
+        test_privileged_archive_diagnostic: ""
+
+    - name: Exercise privileged-mode archive rejection
+      block:
+        - name: Import recovery archive containing a setuid member
+          ansible.builtin.include_role:
+            name: hybridops.app.containerlab_recovery
+          vars:
+            _containerlab_recovery_action: import
+            containerlab_recovery_archive_path: >-
+              {{ test_root }}/privileged-archive.tar.gz
+            containerlab_recovery_expected_sha256: >-
+              {{ test_privileged_archive_stat.stat.checksum }}
+            containerlab_recovery_remote_root: >-
+              {{ test_remote }}/privileged-import
+            containerlab_recovery_labdir_base: "{{ test_labdirs }}"
+            containerlab_recovery_overwrite: true
+
+      rescue:
+        - name: Record privileged-mode archive rejection
+          ansible.builtin.set_fact:
+            test_privileged_archive_rejected: true
+            test_privileged_archive_diagnostic: >-
+              {{ ansible_failed_result | to_json }}
+
+    - name: Require privileged-mode archive rejection
+      ansible.builtin.assert:
+        that:
+          - test_privileged_archive_rejected | bool
+          - >-
+            'structurally unsafe or incomplete' in
+            test_privileged_archive_diagnostic
 
   post_tasks:
     - name: Remove test data

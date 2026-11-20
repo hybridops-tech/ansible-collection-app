@@ -293,9 +293,6 @@
     - name: Initialise saved-configuration link records
       ansible.builtin.set_fact:
         containerlab_recovery_saved_config_link_records: []
-      when:
-        - containerlab_recovery_mode != 'ephemeral'
-        - containerlab_recovery_save_configs | bool
 
     - name: Record saved-configuration link metadata
       ansible.builtin.set_fact:
@@ -534,7 +531,12 @@
             | length == containerlab_recovery_controller_members.stdout_lines | length
           - >-
             containerlab_recovery_controller_member_types.stdout_lines
-            | select('match', '^[lh]')
+            | reject('match', '^[-d]')
+            | list
+            | length == 0
+          - >-
+            containerlab_recovery_controller_member_types.stdout_lines
+            | select('match', '^.{3}[sS]|^.{6}[sS]|^.{9}[tT]')
             | list
             | length == 0
           - >-
@@ -585,6 +587,11 @@
           - containerlab_recovery_archive_path | length > 0
         fail_msg: "containerlab_recovery_archive_path is required for import."
 
+    - name: Clear import directory
+      ansible.builtin.file:
+        path: "{{ containerlab_recovery_remote_root }}/import"
+        state: absent
+
     - name: Create import directory
       ansible.builtin.file:
         path: "{{ containerlab_recovery_remote_root }}/import"
@@ -596,7 +603,6 @@
         src: "{{ containerlab_recovery_archive_path }}"
         dest: "{{ containerlab_recovery_remote_root }}/import/recovery.tar.gz"
         mode: "0640"
-        force: "{{ containerlab_recovery_overwrite | bool }}"
 
     - name: Read imported archive checksum
       ansible.builtin.stat:
@@ -639,7 +645,12 @@
             | length == containerlab_recovery_import_members.stdout_lines | length
           - >-
             containerlab_recovery_import_member_types.stdout_lines
-            | select('match', '^[lh]')
+            | reject('match', '^[-d]')
+            | list
+            | length == 0
+          - >-
+            containerlab_recovery_import_member_types.stdout_lines
+            | select('match', '^.{3}[sS]|^.{6}[sS]|^.{9}[tT]')
             | list
             | length == 0
           - >-
@@ -654,6 +665,9 @@
         src: "{{ containerlab_recovery_remote_root }}/import/recovery.tar.gz"
         dest: "{{ containerlab_recovery_remote_root }}/import"
         remote_src: true
+        extra_opts:
+          - --no-same-owner
+          - --no-same-permissions
 
     - name: Locate restored recovery manifest
       ansible.builtin.find:
@@ -768,25 +782,44 @@
           retained lab directory is absent.
       when: containerlab_recovery_import_manifest_data.lab_directory_included | default(false)
 
-    - name: Remove stale native lab directory before restore
-      ansible.builtin.file:
-        path: >-
+    - name: Resolve native lab restore destination
+      ansible.builtin.set_fact:
+        containerlab_recovery_import_lab_destination: >-
           {{
             containerlab_recovery_labdir_base | regex_replace('/+$', '')
             ~ '/'
             ~ containerlab_recovery_import_manifest_data.lab_directory_name
           }}
-        state: absent
       when: containerlab_recovery_import_manifest_data.lab_directory_included | default(false)
+
+    - name: Read native lab restore destination
+      ansible.builtin.stat:
+        path: "{{ containerlab_recovery_import_lab_destination }}"
+      register: containerlab_recovery_import_lab_destination_state
+      when: containerlab_recovery_import_manifest_data.lab_directory_included | default(false)
+
+    - name: Require explicit native lab overwrite
+      ansible.builtin.assert:
+        that:
+          - >-
+            (not containerlab_recovery_import_lab_destination_state.stat.exists)
+            or (containerlab_recovery_overwrite | bool)
+        fail_msg: >-
+          The native Containerlab lab directory already exists and
+          containerlab_recovery_overwrite is disabled.
+      when: containerlab_recovery_import_manifest_data.lab_directory_included | default(false)
+
+    - name: Remove stale native lab directory before restore
+      ansible.builtin.file:
+        path: "{{ containerlab_recovery_import_lab_destination }}"
+        state: absent
+      when:
+        - containerlab_recovery_import_manifest_data.lab_directory_included | default(false)
+        - containerlab_recovery_import_lab_destination_state.stat.exists
 
     - name: Recreate native lab directory for restore
       ansible.builtin.file:
-        path: >-
-          {{
-            containerlab_recovery_labdir_base | regex_replace('/+$', '')
-            ~ '/'
-            ~ containerlab_recovery_import_manifest_data.lab_directory_name
-          }}
+        path: "{{ containerlab_recovery_import_lab_destination }}"
         state: directory
         mode: "0750"
       when: containerlab_recovery_import_manifest_data.lab_directory_included | default(false)
@@ -794,13 +827,7 @@
     - name: Restore native Containerlab lab directory
       ansible.builtin.copy:
         src: "{{ containerlab_recovery_import_bundle_root }}/lab-directory/"
-        dest: >-
-          {{
-            containerlab_recovery_labdir_base | regex_replace('/+$', '')
-            ~ '/'
-            ~ containerlab_recovery_import_manifest_data.lab_directory_name
-            ~ '/'
-          }}
+        dest: "{{ containerlab_recovery_import_lab_destination }}/"
         remote_src: true
         mode: preserve
       when: containerlab_recovery_import_manifest_data.lab_directory_included | default(false)
@@ -811,6 +838,7 @@
           action: import
           mode: "{{ containerlab_recovery_import_manifest_data.mode }}"
           sha256: "{{ containerlab_recovery_import_stat.stat.checksum }}"
+          topology_sha256: "{{ containerlab_recovery_import_topology_stat.stat.checksum }}"
           topology_path: "{{ containerlab_recovery_import_topology_path }}"
           source_root: "{{ containerlab_recovery_import_source_root }}"
           snapshot_dir: >-
@@ -824,9 +852,7 @@
             {{ containerlab_recovery_import_manifest_data.lab_directory_included | default(false) }}
           lab_directory_path: >-
             {{
-              containerlab_recovery_labdir_base | regex_replace('/+$', '')
-              ~ '/'
-              ~ containerlab_recovery_import_manifest_data.lab_directory_name
+              containerlab_recovery_import_lab_destination
               if containerlab_recovery_import_manifest_data.lab_directory_included | default(false)
               else ''
             }}
