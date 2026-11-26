@@ -1,8 +1,7 @@
 # Contributing to `hybridops.app`
 
-`hybridops.app` provides application and platform roles for HybridOps.Tech (for example Jenkins controller, RKE2 control-plane, NetBox, Moodle, and core platform services).
-
-Design and release context is maintained in the HybridOps.Tech documentation site.
+`hybridops.app` provides application and platform roles used by the HybridOps
+runtime.
 
 ## Contribution scope
 
@@ -50,15 +49,8 @@ cd roles/<role_name>
 molecule test
 ```
 
-Platform integration (via the harness):
-
-```bash
-# In galaxy-collections-harness
-make workspace.clone
-make collections.sync
-make venv.refresh
-make test ROLE=<role_name>
-```
+Changes that affect Core operations must also pass the relevant
+[`hybridops-core`](https://github.com/hybridops-tech/hybridops-core) checks.
 
 ### Pull requests
 
@@ -82,3 +74,6 @@ Molecule scenarios are recommended when container orchestration or multi-node be
 - Do not commit secrets, tokens, client IDs, or passwords.
 - Accept sensitive values via variables, Vault, or environment lookups.
 - Avoid logging sensitive values into task output or evidence artefacts.
+
+Report vulnerabilities through the [security
+policy](SECURITY.md), not a public issue.
