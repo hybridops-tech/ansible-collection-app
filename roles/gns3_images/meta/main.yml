@@ -3,7 +3,7 @@ galaxy_info:
   role_name: gns3_images
   author: HybridOps.Tech
   description: Install verified GNS3 QEMU and IOU images and register usable templates.
-  license: MIT-0
+  license: Apache-2.0
   min_ansible_version: "2.15"
   platforms:
     - name: Ubuntu

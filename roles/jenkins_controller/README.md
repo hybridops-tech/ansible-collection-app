@@ -150,7 +150,7 @@ HybridOps platform automation reference implementation: [docs.hybridops.tech](ht
 
 ## License
 
-- Code: [MIT-0](https://spdx.org/licenses/MIT-0.html)
+- Code: [Apache-2.0](https://spdx.org/licenses/Apache-2.0.html)
 - Documentation & diagrams: [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/)
 
 HybridOps licensing and trademark notes: [Licensing](https://docs.hybridops.tech/briefings/legal/licensing/).
