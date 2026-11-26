@@ -3,7 +3,7 @@ galaxy_info:
   role_name: gns3_starter_lab
   author: HybridOps.Tech
   description: Create an idempotent zero-image GNS3 teaching project.
-  license: MIT-0
+  license: Apache-2.0
   min_ansible_version: "2.15"
   platforms:
     - name: Ubuntu
