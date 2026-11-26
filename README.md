@@ -31,6 +31,7 @@ Role-level variables and assumptions are documented in each role's `README.md`. 
 | `jenkins_controller` | Install and configure Jenkins controller. |
 | `netbox_service` | Install and operate NetBox service. |
 | `pgbackrest_repo` | Install and configure pgBackRest repository service. |
+| `pinned_workload` | Bind a pinned workload revision to declared runtime files and evidence paths. |
 
 ## Requirements
 
@@ -78,3 +79,8 @@ collections:
 - Documentation: [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/)
 
 See the project licensing guidance at [docs.hybridops.tech](https://docs.hybridops.tech).
+
+## Contributing
+
+See [CONTRIBUTING.md](CONTRIBUTING.md). Report vulnerabilities through
+[SECURITY.md](SECURITY.md).
